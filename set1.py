@@ -152,11 +152,8 @@ from collections import Counter
 def catch128ECB(ctexts):
     results = []
     for ctext in ctexts:
-        btext = bytearray(ctext.decode('hex'))
-        segs = makeSegments(btext, 16)
-        ctr = Counter()
-        for seg in segs:
-            ctr.update(''.join(map(chr, seg)))
+        segs = makeSegments(ctext, 16)
+        ctr = Counter(segs)
         results.append([ctext, ctr.most_common(1)])
     results.sort(key=lambda x: x[1], reverse=True)
     return results[0]

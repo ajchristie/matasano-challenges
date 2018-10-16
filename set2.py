@@ -8,7 +8,8 @@ def PKCS(s, n):
     """
     #for i in xrange(1,n+1):
     #    s += chr(i)
-    return s += chr(n)*n
+    s += chr(n)*n
+    return s
 
 def PKCSb(barray, n):
     """
@@ -105,7 +106,9 @@ def stats(cipher, ptext, rounds):
     max = 0
     for _ in xrange(rounds):
         key = os.urandom(16)
-        ctr = Counter(cipher(ptext, key))
+        ctext = cipher(ptext, key)
+        blocks = makeSegments(ctext, 16)
+        ctr = Counter(blocks)
         repeated = filter(lambda x: x > 1, ctr.values())
         avg_max += ctr.most_common(1)[0][1]
         avg_repd += len(repeated)
@@ -115,7 +118,7 @@ def stats(cipher, ptext, rounds):
     avg_repd = float(avg_repd) / rounds
     print 'Maximum repetitions: ' + str(max)
     print 'Avg maximum repetitions: ' + str(avg_max)
-    print 'Avg number of repeated bytes: ' + str(avg_repd)
+    print 'Avg number of repeated blocks: ' + str(avg_repd)
 
 # for challenge 12: byte-at-a-time ECB decryption
 
@@ -144,7 +147,7 @@ def findBlockSize(cipher):
 
 def build_lookup(leader, key, notch):
     lu = dict()
-    for in i xrange(256):
+    for i in xrange(256):
         lu[ECB_oracle(leader + chr(i), key)] = chr(i)
     return lu
 
@@ -153,22 +156,24 @@ def byteXbyte_decrypt():
     # 1. Detect ECB
     # 2. Find block size
     block_size = 16
-    target_len = 184 # this could be found if not already known
+    target_len = 138 # this could be found if not already known
     pad_length = (block_size - (target_len % block_size)) % block_size
-    notch = target_length + pad_length # decrypt position
-    leader = 'A'*(target_len - 1)
+    notch = target_len + pad_length - 1 # decrypt position
+    leader = 'A'*(pad_length + target_len - 1)
     target_string = ''
     key = os.urandom(16) # fixed key for oracle
     while target_len > 0:
+        print len(leader), len(target_string), len(ECB_oracle(leader, key))
         target = ECB_oracle(leader, key)[notch]
-        for i in xrange(256): # could improve speed by restricting range
-            ctext = ECB_oracle(leader + chr(i), key)[notch]
-            if ctext == target:
+        for i in xrange(256):
+            scan = ECB_oracle(leader + target_string + chr(i), key)[notch]
+            if scan == target:
                 target_string += chr(i)
                 break
         target_len -= 1
-        leader = 'A'*(target_len - 1)
+        leader = 'A'*(pad_length + target_len - 1)
     return target_string
+    ## here's something interesting: during each round there are multiple possible matches, so short circuiting is not something you should do. Instead, take all matches, and try one, using the others as fallbacks in case the next round fails to find a match. You can improve this a bit by just excluding unprintable matches and otherwise biasing toward alphabetical characters.
 
 # for challenge 13: ECB cut-and-paste
 
@@ -242,7 +247,7 @@ def valid_PKCS(text):
         if text[len(text)-tail:] == chr(tail)*tail and text[:len(text)-tail].isprintable:
             return True
         else:
-            return False
+            return False # actually, throw here
     else: # no padding; trivially valid
         return True
 
