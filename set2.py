@@ -91,16 +91,20 @@ def encryption_oracle(ptext):
 def detection_oracle(ctext):
     """
     Returns the likely mode of operation used to AES encrypt ctext.
-    As of now, the main tell is taken to be the presence of repeated bytes far in excess of expected for a uniform random string of the same length.
+    There's a couple things dependent on the set up: the string passed in is long enough to work in this case because we know there's at most a 10 byte prefix, so 48 bytes of plaintext is enough to cover 2 consecutive blocks regardless. That amount would have to change, depending.
     """
-    ctr = Counter(ctext)
-    expected  = float(1 / 256) * len(ctext)
-    if ctr.most_common(1)[0][1] > 4*expected: # what's an appropriate screening value?
+    ptext = 'A'*48
+    ctext = encryption_oracle(ptext)
+    blocks = makeSegments(ctext, 16)
+    if blocks[1] == blocks[2]:
         return 'ECB'
     else:
         return 'CBC'
 
 def stats(cipher, ptext, rounds):
+    """
+    Just out of interest, a function to get some basic figures on repeated blocks in ciphertexts under ECB and CBC.
+    """
     avg_max = 0
     avg_repd = 0
     max = 0
@@ -131,25 +135,20 @@ def ECB_oracle(ptext, key):
     ptext += fixed_tail.decode('base64')
     return encAESECB(ptext, key)
 
-def findBlockSize(cipher):
+def findSizes(cipher):
     """
-    Kind of nonsense. Returns the block size of cipher, presuming it operates in ECB mode. If it isn't, this could, and probably will, run forever.
+    Kind of nonsense. In the situation here, it's possible to capture both the size of the plaintext and the block size of the cipher in one go, so we may as well. As the description says, we know this already, but do it anyway.
     """
-    length = 2
     key = os.urandom(16) # if cipher is an oracle, remove this
+    start_length = len(cipher('', key))
+    ptext = ''
     while True:
-        ptext = 'A'*length
+        ptext += 'A'
         ctext = cipher(ptext, key)
-        if ctext[:length/2] == ctext[length/2:length]:
-            break
-        length += 2
-    return length / 2
-
-def build_lookup(leader, key, notch):
-    lu = dict()
-    for i in xrange(256):
-        lu[ECB_oracle(leader + chr(i), key)] = chr(i)
-    return lu
+        if len(ctext) != start_length:
+            block_size = len(ctext) - start_length
+            target_length = start_length - len(ptext)
+            return block_size, target_size
 
 def byteXbyte_decrypt():
     ### we'll skip actually doing these steps:
@@ -163,7 +162,6 @@ def byteXbyte_decrypt():
     target_string = ''
     key = os.urandom(16) # fixed key for oracle
     while target_len > 0:
-        print len(leader), len(target_string), len(ECB_oracle(leader, key))
         target = ECB_oracle(leader, key)[notch]
         for i in xrange(256):
             scan = ECB_oracle(leader + target_string + chr(i), key)[notch]
@@ -173,7 +171,11 @@ def byteXbyte_decrypt():
         target_len -= 1
         leader = 'A'*(pad_length + target_len - 1)
     return target_string
-    ## here's something interesting: during each round there are multiple possible matches, so short circuiting is not something you should do. Instead, take all matches, and try one, using the others as fallbacks in case the next round fails to find a match. You can improve this a bit by just excluding unprintable matches and otherwise biasing toward alphabetical characters.
+    ## here's something interesting: during each round there are multiple possible matches, so
+    # short circuiting is not something you should do. Instead, take all matches, and try one for
+    # the next round, using the others as fallbacks in case the next round fails to find a match.
+    # You can improve this a bit by just excluding unprintable matches and otherwise biasing toward
+    # alphabetical characters.
 
 # for challenge 13: ECB cut-and-paste
 
@@ -237,18 +239,24 @@ def pf_byteXbyte_decrypt():
     pass
 
 # for challenge 15: PKCS#7 Validation
+import string
 
 def valid_PKCS(text):
     """
     Returns true if text is padded with valid PKCS#7 padding or if no padding is present. Assumes text otherwise contains only printable characters.
     """
     tail = ord(text[-1])
+    expected_pad = chr(tail)*tail
     if 1 <= tail and tail <= 15: # padding is present
-        if text[len(text)-tail:] == chr(tail)*tail and text[:len(text)-tail].isprintable:
+        if text[len(text)-tail:] == expected_pad and text[:len(text)-tail] in string.printable:
             return True
         else:
-            return False # actually, throw here
+            raise ValueError('Bad padding')
     else: # no padding; trivially valid
         return True
+
+def check_and_strip_PKCS(text):
+    if valid_PKCS(text):
+        return text[:len(text)-ord(text[-1])]
 
 # for challenge 16: CBC Bitflipping
