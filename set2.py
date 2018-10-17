@@ -6,8 +6,6 @@ def PKCS(s, n):
     Appends bytes to the end of the string as specified by PKCS#7
     Returns 8-bit string
     """
-    #for i in xrange(1,n+1):
-    #    s += chr(i)
     s += chr(n)*n
     return s
 
@@ -15,14 +13,12 @@ def PKCSb(barray, n):
     """
     Appends bytes to the end of a bytearray in accordance with PKCS#7
     """
-    #for i in xrange(1, n+1):
-    #    barray.append(i)
     return barray.append([n]*n)
 
 # for challenge 10: CBC Mode
 from Crypto.Cipher import AES
 
-def makeSegments(a, n):
+def make_segments(a, n):
     """
     Returns a list containing length n segments of the input a. If len(a) % n != 0, the remaining elements of a are not added to the list rather than have a partly empty segment.
     """
@@ -46,7 +42,7 @@ def encAESCBC(ptext, key):
     pad_length = (16 - (len(ptext) % 16)) % 16
     if pad_length != 0:
         ptext = PKCS(ptext, pad_length)
-    blocks = makeSegments(ptext, 16)
+    blocks = make_segments(ptext, 16)
     IV = chr(0)*16
     ctext = ''
     for block in blocks:
@@ -62,7 +58,7 @@ def encAESECB(ptext, key):
     pad_length = (16 - (len(ptext) % 16)) % 16
     if pad_length != 0:
         ptext = PKCS(ptext, pad_length)
-    segments = makeSegments(ptext, 16)
+    segments = make_segments(ptext, 16)
     ctext = ''
     cipher = AES.new(key, AES.MODE_ECB)
     for segment in segments:
@@ -73,6 +69,7 @@ def encAESECB(ptext, key):
 import os
 import random
 from collections import Counter
+fixed_oracle_key = os.urandom(16)
 
 def encryption_oracle(ptext):
     """
@@ -87,14 +84,14 @@ def encryption_oracle(ptext):
     mode = random.choice(['ECB', 'CBC'])
     return encAESECB(ptext, key) if mode == 'ECB' else encAESCBC(ptext, key)
 
-def detection_oracle(ctext):
+def detection_oracle():
     """
     Returns the likely mode of operation used to AES encrypt ctext.
     There's a couple things dependent on the set up: the ptext string is long enough to work in this case because we know there's at most a 10 byte prefix, so 48 bytes of plaintext is enough to cover 2 consecutive blocks regardless. That amount would have to change, depending.
     """
     ptext = 'A'*48
     ctext = encryption_oracle(ptext)
-    blocks = makeSegments(ctext, 16)
+    blocks = make_segments(ctext, 16)
     if blocks[1] == blocks[2]:
         return 'ECB'
     else:
@@ -110,7 +107,7 @@ def stats(cipher, ptext, rounds):
     for _ in xrange(rounds):
         key = os.urandom(16)
         ctext = cipher(ptext, key)
-        blocks = makeSegments(ctext, 16)
+        blocks = make_segments(ctext, 16)
         ctr = Counter(blocks)
         repeated = filter(lambda x: x > 1, ctr.values())
         avg_max += ctr.most_common(1)[0][1]
@@ -125,25 +122,24 @@ def stats(cipher, ptext, rounds):
 
 # for challenge 12: byte-at-a-time ECB decryption
 
-def ECB_oracle(ptext, key):
+def ECB_oracle(ptext):
     """
     Encrypts ptext + fixed_tail with AESECB.
     """
     fixed_tail = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
     # key = os.urandom(16) this should be passed in
     ptext += fixed_tail.decode('base64')
-    return encAESECB(ptext, key)
+    return encAESECB(ptext, fixed_oracle_key)
 
-def findSizes(cipher):
+def find_sizes(cipher):
     """
     Kind of nonsense. In the situation here, it's possible to capture both the size of the plaintext and the block size of the cipher in one go, so we may as well. As the description says, we know this already, but do it anyway.
     """
-    key = os.urandom(16)
     start_length = len(cipher('', key))
     ptext = ''
     while True:
         ptext += 'A'
-        ctext = cipher(ptext, key)
+        ctext = cipher(ptext, fixed_oracle_key)
         if len(ctext) != start_length:
             block_size = len(ctext) - start_length
             target_size = start_length - len(ptext)
@@ -160,11 +156,10 @@ def byteXbyte_decrypt():
     notch = target_len + pad_length - 1 # decrypt position
     leader = 'A'*(pad_length + target_len - 1)
     target_string = ''
-    key = os.urandom(16) # fixed key for oracle
     while target_len > 0:
-        target = ECB_oracle(leader, key)[notch-block_size:notch+1]
+        target = ECB_oracle(leader)[notch-block_size:notch+1]
         for i in xrange(256):
-            scan = ECB_oracle(leader + target_string + chr(i), key)[notch-block_size:notch+1]
+            scan = ECB_oracle(leader + target_string + chr(i))[notch-block_size:notch+1]
             if scan == target:
                 target_string += chr(i)
                 break
@@ -174,11 +169,11 @@ def byteXbyte_decrypt():
 
 # for challenge 13: ECB cut-and-paste
 
-def parseCookie(c):
+def parse_cookie(c):
     """
     Accepts a bytestring assumed to be in the format
     s = 'foo=bar&baz=kux&zap=zazzle'
-    and returns a dict with those key: value pairs,
+    and returns a dict with those key: value pairs --
     d = {'foo': bar, 'baz: kux, 'zap': zazzle}
     All values will be strings.
     """
@@ -186,64 +181,64 @@ def parseCookie(c):
     items = [item.split('=') for item in items]
     return dict(items)
 
-def makeCookie(d):
-    """
-    Reverses parseCookie, just in case.
-    """
-    c = ''
-    for member in d:
-        c += member.key() + '=' + str(member.value())
-    return c
-
-from validate_email import validate_email
-
 def profile_for(email):
-    if validate_email(email):
-        return 'email=' + email
-    else:
-        return None
+    # eat tokens
+    email = ''.join(email.split('='))
+    email = ''.join(email.split('&'))
+    return 'email=' + email + '&uid=10&role=user'
 
-def enc_profile(profile, key):
-    return encAESECB(profile, key)
+def enc_profile(profile):
+    return encAESECB(profile, fixed_oracle_key)
 
-def dec_profile(ctext, key):
-    cipher = AES.new(key, AES.MODE_ECB)
-    return parseCookie(cipher.decrypt(ctext, key))
+def dec_profile(ctext):
+    cipher = AES.new(fixed_oracle_key, AES.MODE_ECB)
+    return parse_cookie(check_and_strip_PKCS(cipher.decrypt(ctext)))
 
 def profile_oracle(email):
     return enc_profile(profile_for(email))
 
 def force_admin():
-    # I'm skipping this for now because something about it seems unclear, but here's what it seems like they might be asking for: Use access to profile_for to get a valid profile string equal to the block size (to avoid padding being added), encrypt that, and then separately encrypt (under the same key), '&role=admin' and append that to the ciphertext. The whole thing will then decrypt to a string assigning the admin role. I'll come back to this.
-    pass
+    email = 'MrX@gmail.com'
+    ciphertext1 = enc_profile(profile_for(email))
+    evilmail = '0000000000admin\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b@gmail.com'
+    ciphertext2 = enc_profile(profile_for(evilmail))
+    submission = ciphertext1[:32] + ciphertext2[16:32]
+    result = dec_profile(submission)
+    if result['role'] == 'admin':
+        print 'Success!: ' + str(result)
+    else:
+        print 'Shucks: ' + str(result)
 
 # for challenge 14: byte-at-a-time ECB redux
+pf_amt = random.randint(5, 10)
+random_prefix = os.urandom(pf_amt)
 
-def pf_ECB_oracle(ptext, key):
+def pf_ECB_oracle(ptext):
     """
     Encrypts ptext + fixed_tail with AESECB prefixed with 5 - 10 random bytes.
     """
     fixed_tail = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
-    pf_amt = random.randint(5, 10)
-    prefix = os.urandom(pf_amt)
-    # key = os.urandom(16) this should be passed in
-    ptext = prefix + ptext + fixed_tail.decode('base64')
-    return encAESECB(ptext, key)
+    ptext = random_prefix + ptext + fixed_tail.decode('base64')
+    return encAESECB(ptext, fixed_oracle_key)
 
 def pf_byteXbyte_decrypt():
+    ## I'm going to pass on this one for now, since the challenge seems to say the same random
+    # prefix is always used. If so, the method used above will work after writing a new find_sizes
+    # function that will also find the size of the prefix, which is very possible.
+    # Then, everything in byteXbyte_decrypt can be shifted by that amount and things will work
+    # in this case too.
     pass
 
 # for challenge 15: PKCS#7 Validation
-import string
 
 def valid_PKCS(text):
     """
-    Returns true if text is padded with valid PKCS#7 padding or if no padding is present. Assumes text otherwise contains only printable characters.
+    Returns true if text is padded with valid PKCS#7 padding or if no padding is present.
     """
     tail = ord(text[-1])
     expected_pad = chr(tail)*tail
     if 1 <= tail and tail <= 15: # padding is present
-        if text[len(text)-tail:] == expected_pad and text[:len(text)-tail] in string.printable:
+        if text[len(text)-tail:] == expected_pad:
             return True
         else:
             raise ValueError('Bad padding')
@@ -255,3 +250,32 @@ def check_and_strip_PKCS(text):
         return text[:len(text)-ord(text[-1])]
 
 # for challenge 16: CBC Bitflipping
+
+def decAESCBC(ctext, key):
+    blocks = make_segments(ctext, 16)
+    IV = chr(0)*16
+    cipher = AES.new(key, AES.MODE_ECB)
+    ptext = ''
+    for block in blocks:
+        ptext += fixedXOR(IV, cipher.decrypt(block))
+        IV = block
+    return check_and_strip_PKCS(ptext)
+
+
+def generate_and_encrypt_usrdata(data):
+    # quote out tokens
+    data = data.replace(";", "';'")
+    data = data.replace("=", "'='")
+    prefix = "comment1=Cooking%20MCs;userdata="
+    postfix = ";comment2=%20like%20a%20pound%20of%20bacon"
+    fulldata = prefix + data + postfix
+    return encAESCBC(fulldata, fixed_oracle_key)
+
+def is_admin(ctext):
+    ptext = decAESCBC(ctext, fixed_oracle_key)
+    splits = ptext.split(';')
+    lu = dict([item.split('=') for item in splits])
+    return bool(lu.get('admin', False))
+
+def force_admin2():
+    pass
