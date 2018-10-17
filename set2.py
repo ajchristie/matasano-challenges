@@ -42,7 +42,6 @@ def encAESCBC(ptext, key):
     """
     Encrypts ptext under key with AES in CBC mode. Rules for input and output are the same as for the pycrypto function used as primitive (i.e., bytestrings).
     """
-    # maybe this is cheating, but we'll only use it per block; we'll come back
     cipher = AES.new(key, AES.MODE_ECB)
     pad_length = (16 - (len(ptext) % 16)) % 16
     if pad_length != 0:
@@ -91,7 +90,7 @@ def encryption_oracle(ptext):
 def detection_oracle(ctext):
     """
     Returns the likely mode of operation used to AES encrypt ctext.
-    There's a couple things dependent on the set up: the string passed in is long enough to work in this case because we know there's at most a 10 byte prefix, so 48 bytes of plaintext is enough to cover 2 consecutive blocks regardless. That amount would have to change, depending.
+    There's a couple things dependent on the set up: the ptext string is long enough to work in this case because we know there's at most a 10 byte prefix, so 48 bytes of plaintext is enough to cover 2 consecutive blocks regardless. That amount would have to change, depending.
     """
     ptext = 'A'*48
     ctext = encryption_oracle(ptext)
@@ -139,7 +138,7 @@ def findSizes(cipher):
     """
     Kind of nonsense. In the situation here, it's possible to capture both the size of the plaintext and the block size of the cipher in one go, so we may as well. As the description says, we know this already, but do it anyway.
     """
-    key = os.urandom(16) # if cipher is an oracle, remove this
+    key = os.urandom(16)
     start_length = len(cipher('', key))
     ptext = ''
     while True:
@@ -147,35 +146,31 @@ def findSizes(cipher):
         ctext = cipher(ptext, key)
         if len(ctext) != start_length:
             block_size = len(ctext) - start_length
-            target_length = start_length - len(ptext)
+            target_size = start_length - len(ptext)
             return block_size, target_size
 
 def byteXbyte_decrypt():
     ### we'll skip actually doing these steps:
     # 1. Detect ECB
-    # 2. Find block size
+    # 2. Find block size (& target length)
+    # In other circumstances use the previous function in place of the first two assignments below.
     block_size = 16
-    target_len = 138 # this could be found if not already known
+    target_len = 138
     pad_length = (block_size - (target_len % block_size)) % block_size
     notch = target_len + pad_length - 1 # decrypt position
     leader = 'A'*(pad_length + target_len - 1)
     target_string = ''
     key = os.urandom(16) # fixed key for oracle
     while target_len > 0:
-        target = ECB_oracle(leader, key)[notch]
+        target = ECB_oracle(leader, key)[notch-block_size:notch+1]
         for i in xrange(256):
-            scan = ECB_oracle(leader + target_string + chr(i), key)[notch]
+            scan = ECB_oracle(leader + target_string + chr(i), key)[notch-block_size:notch+1]
             if scan == target:
                 target_string += chr(i)
                 break
         target_len -= 1
         leader = 'A'*(pad_length + target_len - 1)
     return target_string
-    ## here's something interesting: during each round there are multiple possible matches, so
-    # short circuiting is not something you should do. Instead, take all matches, and try one for
-    # the next round, using the others as fallbacks in case the next round fails to find a match.
-    # You can improve this a bit by just excluding unprintable matches and otherwise biasing toward
-    # alphabetical characters.
 
 # for challenge 13: ECB cut-and-paste
 
@@ -232,7 +227,7 @@ def pf_ECB_oracle(ptext, key):
     pf_amt = random.randint(5, 10)
     prefix = os.urandom(pf_amt)
     # key = os.urandom(16) this should be passed in
-    ptext = ''.join(map(chr, prefix)) + ptext + fixed_tail.decode('base64')
+    ptext = prefix + ptext + fixed_tail.decode('base64')
     return encAESECB(ptext, key)
 
 def pf_byteXbyte_decrypt():
