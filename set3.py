@@ -4,7 +4,7 @@
 import os
 import random
 fixed_oracle_key = os.urandom(16)
-from set2 import encAESCBC, decAESCBC, valid_PKCS, make_segments
+from set2 import encAESCBC, decAESCBC, valid_PKCS, make_segments, fixedXOR
 from Crypto.Cipher import AES
 
 def send_token():
@@ -20,7 +20,7 @@ def send_token():
                'MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93']
     token = random.choice(tokens)
     IV = chr(0)*16 # remember to change this if you randomize IVs
-    return encAESCBC(token, fixed_oracle_key), IV
+    return encAESCBC(token.decode('base64'), fixed_oracle_key), IV
 
 def decAESCBC_keep_padding(ctext, key):
     blocks = make_segments(ctext, 16)
@@ -52,7 +52,9 @@ def AESCTR(ptext, key, nonce=None):
     counter = 0
     IV = nonce + struct.pack('<q', counter)
     num_blocks = len(ptext) / 16
-    for i in xrange(0, num_blocks+1, 16):
+    if len(ptext) % 16 != 1:
+        num_blocks += 1
+    for i in xrange(0, num_blocks*16, 16):
         ctext += fixedXOR(ptext[i:i+16], cipher.encrypt(IV))
         counter += 1
         IV = nonce + struct.pack('<q', counter)
