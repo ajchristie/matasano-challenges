@@ -39,9 +39,8 @@ def encAESCBC(ptext, key):
     Encrypts ptext under key with AES in CBC mode. Rules for input and output are the same as for the pycrypto function used as primitive (i.e., bytestrings).
     """
     cipher = AES.new(key, AES.MODE_ECB)
-    pad_length = (16 - (len(ptext) % 16)) % 16
-    if pad_length != 0:
-        ptext = PKCS(ptext, pad_length)
+    pad_length = 16 - (len(ptext) % 16)
+    ptext = PKCS(ptext, pad_length)
     blocks = make_segments(ptext, 16)
     IV = chr(0)*16
     ctext = ''
@@ -55,9 +54,8 @@ def encAESECB(ptext, key):
     """
     Encrypts ptext under key with AES in ECB mode. Rules for input and output are the same as for the pycrypto function used as primitive (i.e., bytestrings).
     """
-    pad_length = (16 - (len(ptext) % 16)) % 16
-    if pad_length != 0:
-        ptext = PKCS(ptext, pad_length)
+    pad_length = 16 - (len(ptext) % 16)
+    ptext = PKCS(ptext, pad_length)
     segments = make_segments(ptext, 16)
     ctext = ''
     cipher = AES.new(key, AES.MODE_ECB)
@@ -232,17 +230,17 @@ def pf_byteXbyte_decrypt():
 
 def valid_PKCS(text):
     """
-    Returns true if text is padded with valid PKCS#7 padding or if no padding is present.
+    Returns true if text is padded with valid PKCS#7 padding.
     """
     tail = ord(text[-1])
-    expected_pad = chr(tail)*tail
-    if 1 <= tail and tail <= 15: # padding is present
+    if 1 <= tail and tail <= 16:
+        expected_pad = chr(tail)*tail
         if text[len(text)-tail:] == expected_pad:
             return True
         else:
             raise ValueError('Bad padding')
-    else: # no padding; trivially valid
-        return True
+    else: # no padding; invalid
+        raise ValueError('Bad Padding')
 
 def check_and_strip_PKCS(text):
     if valid_PKCS(text):
