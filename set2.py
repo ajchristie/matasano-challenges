@@ -127,7 +127,6 @@ def ECB_oracle(ptext):
     Encrypts ptext + fixed_tail with AESECB.
     """
     fixed_tail = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
-    # key = os.urandom(16) this should be passed in
     ptext += fixed_tail.decode('base64')
     return encAESECB(ptext, fixed_oracle_key)
 
@@ -199,9 +198,9 @@ def profile_oracle(email):
 
 def force_admin():
     email = 'MrX@gmail.com'
-    ciphertext1 = enc_profile(profile_for(email))
+    ciphertext1 = profile_oracle(email)
     evilmail = '0000000000admin\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b@gmail.com'
-    ciphertext2 = enc_profile(profile_for(evilmail))
+    ciphertext2 = profile_oracle(evilmail)
     submission = ciphertext1[:32] + ciphertext2[16:32]
     result = dec_profile(submission)
     if result['role'] == 'admin':
@@ -224,8 +223,8 @@ def pf_ECB_oracle(ptext):
 def pf_byteXbyte_decrypt():
     ## I'm going to pass on this one for now, since the challenge seems to say the same random
     # prefix is always used. If so, the method used above will work after writing a new find_sizes
-    # function that will also find the size of the prefix, which is very possible.
-    # Then, everything in byteXbyte_decrypt can be shifted by that amount and things will work
+    # function that will also find the size of the prefix, which is very doable.
+    # Then, everything in byteXbyte_decrypt can be shifted by that amount and will work
     # in this case too.
     pass
 
@@ -278,4 +277,11 @@ def is_admin(ctext):
     return bool(lu.get('admin', False))
 
 def force_admin2():
-    pass
+    data = "0000000000000000;dmi=rue"
+    ctext = generate_and_encrypt_usrdata(data)
+    maul = '\x00'*32 + '\x00\x00F\x00\x00\x00I\x00S' + '\x00'*81
+    submission = fixedXOR(ctext, maul)
+    if is_admin(submission):
+        print 'Yessssss'
+    else:
+        print 'Aw, peas.'

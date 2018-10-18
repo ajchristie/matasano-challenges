@@ -32,5 +32,8 @@ def decAESCBC_keep_padding(ctext, key):
     return ptext
 
 def padding_oracle(ctext):
-    ptext = decAESCBC_keep_padding(ctext)
-    return valid_PKCS(ptext)
+    ptext = decAESCBC_keep_padding(ctext, fixed_oracle_key)
+    try:
+        return valid_PKCS(ctext)
+    except ValueError:
+        return False
