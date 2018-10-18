@@ -4,7 +4,8 @@
 import os
 import random
 fixed_oracle_key = os.urandom(16)
-from set2 import encAESCBC, decAESCBC, valid_PKCS
+from set2 import encAESCBC, decAESCBC, valid_PKCS, make_segments
+from Crypto.Cipher import AES
 
 def send_token():
     tokens = ['MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=',
@@ -37,3 +38,24 @@ def padding_oracle(ctext):
         return valid_PKCS(ctext)
     except ValueError:
         return False
+
+
+
+# for challenge 18: Implement CTR mode
+import struct
+
+def AESCTR(ptext, key, nonce=None):
+    if nonce is None:
+        nonce = '\x00'*8
+    cipher = AES.new(key, AES.MODE_ECB)
+    ctext = ''
+    counter = 0
+    IV = nonce + struct.pack('<q', counter)
+    num_blocks = len(ptext) / 16
+    for i in xrange(0, num_blocks+1, 16):
+        ctext += fixedXOR(ptext[i:i+16], cipher.encrypt(IV))
+        counter += 1
+        IV = nonce + struct.pack('<q', counter)
+    return ctext
+
+# for challenge 19: Break fixed-nonce CTR with substitutions
