@@ -35,7 +35,7 @@ def decAESCBC_keep_padding(ctext, key):
 def padding_oracle(ctext):
     ptext = decAESCBC_keep_padding(ctext, fixed_oracle_key)
     try:
-        return valid_PKCS(ctext)
+        return valid_PKCS(ptext)
     except ValueError:
         return False
 
@@ -141,6 +141,7 @@ def make_ciphertexts():
 
 def CTR_break1():
     ctexts = make_ciphertexts()
+    pass
     # ETAOIN SHRDLU. Skip this for now, since the method that forst occurred to me was the one in
     # the next challenge anyway. I'll come back.
 
@@ -179,7 +180,7 @@ def CTR_break2():
 # for challenge 21: Implement MT19937 Mersenne Twister RNG
 
 class MT19937:
-    __init__(self, seed=None):
+    def __init__(self, seed=None):
         self.w = 32
         self.n = 624
         self.m = 397
@@ -197,19 +198,19 @@ class MT19937:
         self.index = self.n + 1
         self.lower_mask = (1 << self.r) - 1
         self.upper_mask = ((1 << self.w) - 1) & ~(self.lower_mask)
-        if seed:
+        if seed is not None:
             self.seed_state(seed)
         else:
             self.seed_state(5489)
 
-    def seed_state(value):
+    def seed_state(self, value):
         self.index = self.n
         self.state[0] = value
         for i in xrange(1, self.n):
             self.state[i] = ((1 << self.w) - 1) & (
                 self.f * (self.state[i-1] ^ (self.state[i-1] >> (self.w - 2))) + i)
 
-    def extract_number():
+    def extract_number(self):
         if self.index >= self.n:
             self.twist()
         y = self.state[index]
@@ -220,7 +221,7 @@ class MT19937:
         self.index += 1
         return ((1 << self.w) - 1) & y
 
-    def twist():
+    def twist(self):
         for i in xrange(self.n):
             x = (self.state[i] & self.upper_mask) + (self.state[i+1 % self.n] & self.lower_mask)
             xA = x >> 1
@@ -231,9 +232,37 @@ class MT19937:
 
 
 # for challenge 22: Crack an MT19937 seed
+import time
+
+def a_value():
+    generator = MT19937()
+    wait_time = random.randint(40, 1000)
+    time.sleep(wait_time)
+    MT19937.seed_state(int(time.time()))
+    wait_time = random.randint(40, 1000)
+    print "You'll be waiting " + str(wait_time) + " seconds."
+    time.sleep(wait_time)
+    number = MT19937.extract_number()
+    print "Here you go: " + str(number)
+    return number
+
+def catch_seed():
+    pass
 
 
 # for challenge 23: Clone an MT19937 from output
 
+def untwist(number):
+    pass
+
+def rebuild_state(outputs):
+    pass
+
+def clone_twister(twister):
+    pass
+
 
 # for challenge 24: Create & break MT19937 stream cipher
+
+def MTCTR(ptext, seed):
+    pass
