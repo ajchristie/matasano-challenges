@@ -39,30 +39,41 @@ def padding_oracle(ctext):
     except ValueError:
         return False
 
-def padding_attack(): # this still needs a fallback routine and to be debugged
+def padding_attack(): # this still needs to be debugged
     ctext, IV = send_token()
     cblocks = [IV]
     cblocks.extend(make_segments(ctext, 16))
-    maul = '\x00'*15
+    maul = '\x00'*16
     pblocks = []
     for i in xrange(len(cblocks)):
         P = ''
         C = cblocks[i+1]
         padding_value = 1
-        attack_value = 0
-        for j in xrange(16):
-            maul = maul[:15-j]+ chr(padding_value)*j
+        for j in xrange(15, -1, -1):
+            maul = maul[:j] + chr(padding_value)*j
+            attack_value = 0
             for k in xrange(1,256):
                 maul[j] = chr(k)
                 submission = maul + C
                 if padding_oracle(submission):
                     attack_value = k
                     break
-                P += chr((padding_value ^ k) ^ ord(C[j]))
             padding_value += 1
+            edge_check = True if j == 15 else False
+            while edge_check:
+                index = j-1
+                for k in xrange(1, 256):
+                    temp = maul[:index] + chr(k)
+                    submission = temp + C
+                    if padding_oracle(submission):
+                        padding_value += 1
+                        attack_value = k
+                        index -= 1
+                    else:
+                        edge_check = False
+            P += chr((padding_value ^ attack_value) ^ ord(C[j]))
         pblocks.append(P)
-    return ''.join(pblocks)
-
+    return ''.join(pblocks), decAESCBC(ctext, fixed_oracle_key)
 
 # for challenge 18: Implement CTR mode
 import struct
@@ -75,7 +86,7 @@ def AESCTR(ptext, key, nonce=None): # nonce should be little endian bytestring
     counter = 0
     IV = nonce + struct.pack('<q', counter)
     num_blocks = len(ptext) / 16
-    if len(ptext) % 16 != 1:
+    if len(ptext) % 16 != 0:
         num_blocks += 1
     for i in xrange(0, num_blocks*16, 16):
         ctext += fixedXOR(ptext[i:i+16], cipher.encrypt(IV))
@@ -130,13 +141,93 @@ def make_ciphertexts():
 
 def CTR_break1():
     ctexts = make_ciphertexts()
-    # ETAOIN SHRDLU
+    # ETAOIN SHRDLU. Skip this for now, since the method that forst occurred to me was the one in
+    # the next challenge anyway. I'll come back.
 
 
 # for challenge 20: Break fixed-nonce CTR Vigenere style
 
+def loadCT():
+    with open('20.txt', 'r') as f:
+        ctexts = f.readlines()
+    ctexts = [line.strip() for line in ctexts]
+    return ctexts
+
+def CTR_break2():
+    ctexts = loadCT()
+    min_length = min([len(ctext) for ctext in ctexts])
+    num_blocks = min_length / 16
+    decrypt_length = num_blocks*16
+    vigs = []
+    for i in xrange(0, decrypt_length, 16):
+        vig = [ctext[i:i+16] for ctext in ctexts]
+        vigs.append(vig)
+    ptexts = []
+    keys = []
+    for vig in vigs:
+        key, decrypted = breakVig(vig)
+        keys.append(key)
+        ptexts.append(make_segments(decrypted, 16))
+    ptexts = zip(*ptexts)
+    print 'Maximum overlap in samples: ' + str(min_length)
+    print 'Decrypt length: ' + str(decrypt_length)
+    for i in xrange(len(ptexts)):
+        print 'Ciphertext: ' + ctexts[i]
+        print 'Plaintext: ' + ptexts[i]
+        print '\n'
 
 # for challenge 21: Implement MT19937 Mersenne Twister RNG
+
+class MT19937:
+    __init__(self, seed=None):
+        self.w = 32
+        self.n = 624
+        self.m = 397
+        self.r = 31
+        self.a = int(0x9908B0DF)
+        self.u = 11
+        self.d = int(0xFFFFFFFF)
+        self.s = 7
+        self.b = int(0x9D2C5680)
+        self.t = 15
+        self.c = int(0xEFC60000)
+        self.l = 18
+        self.f = 1812433253
+        self.state = []
+        self.index = self.n + 1
+        self.lower_mask = (1 << self.r) - 1
+        self.upper_mask = ((1 << self.w) - 1) & ~(self.lower_mask)
+        if seed:
+            self.seed_state(seed)
+        else:
+            self.seed_state(5489)
+
+    def seed_state(value):
+        self.index = self.n
+        self.state[0] = value
+        for i in xrange(1, self.n):
+            self.state[i] = ((1 << self.w) - 1) & (
+                self.f * (self.state[i-1] ^ (self.state[i-1] >> (self.w - 2))) + i)
+
+    def extract_number():
+        if self.index >= self.n:
+            self.twist()
+        y = self.state[index]
+        y = y ^ ((y >> self.u) & self.d)
+        y = y ^ ((y << self.s) & self.b)
+        y = y ^ ((y << self.t) & self.c)
+        y = y ^ (y >> self.l)
+        self.index += 1
+        return ((1 << self.w) - 1) & y
+
+    def twist():
+        for i in xrange(self.n):
+            x = (self.state[i] & self.upper_mask) + (self.state[i+1 % self.n] & self.lower_mask)
+            xA = x >> 1
+            if (x % 2) != 0:
+                xA %= self.a
+            self.state[i] = self.state[(i + self.m) % self.n] ^ xA
+        self.index = 0
 
 
 # for challenge 22: Crack an MT19937 seed
