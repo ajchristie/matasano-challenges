@@ -47,11 +47,13 @@ def padding_attack(): # this still needs to be debugged
     pblocks = []
     for i in xrange(len(cblocks)):
         P = ''
-        C = cblocks[i+1]
-        padding_value = 1
+        C = cblocks[i+1]  # block to be decrypted
+        padding_value = 1 # assumed value of valid padding
+
         for j in xrange(15, -1, -1):
-            maul = maul[:j] + chr(padding_value)*j
+            maul = maul[:max(j, padding_value)] + chr(padding_value)*max(j, padding_value)
             attack_value = 0
+
             for k in xrange(1,256):
                 maul[j] = chr(k)
                 submission = maul + C
@@ -59,8 +61,9 @@ def padding_attack(): # this still needs to be debugged
                     attack_value = k
                     break
             padding_value += 1
+
             edge_check = True if j == 15 else False
-            while edge_check:
+            while edge_check: # on first pass each block, resolve what valid amount of padding is
                 index = j-1
                 for k in xrange(1, 256):
                     temp = maul[:index] + chr(k)
@@ -71,9 +74,13 @@ def padding_attack(): # this still needs to be debugged
                         index -= 1
                     else:
                         edge_check = False
+
             P += chr((padding_value ^ attack_value) ^ ord(C[j]))
         pblocks.append(P)
     return ''.join(pblocks), decAESCBC(ctext, fixed_oracle_key)
+
+def find_padding_length(): # might be better that sticking that edge check in above...
+    pass
 
 # for challenge 18: Implement CTR mode
 import struct
@@ -194,7 +201,7 @@ class MT19937:
         self.c = int(0xEFC60000)
         self.l = 18
         self.f = 1812433253
-        self.state = []
+        self.state = [0]*self.n
         self.index = self.n + 1
         self.lower_mask = (1 << self.r) - 1
         self.upper_mask = ((1 << self.w) - 1) & ~(self.lower_mask)
@@ -213,7 +220,7 @@ class MT19937:
     def extract_number(self):
         if self.index >= self.n:
             self.twist()
-        y = self.state[index]
+        y = self.state[self.index]
         y = y ^ ((y >> self.u) & self.d)
         y = y ^ ((y << self.s) & self.b)
         y = y ^ ((y << self.t) & self.c)
@@ -223,7 +230,7 @@ class MT19937:
 
     def twist(self):
         for i in xrange(self.n):
-            x = (self.state[i] & self.upper_mask) + (self.state[i+1 % self.n] & self.lower_mask)
+            x = (self.state[i] & self.upper_mask) + (self.state[(i+1) % (self.n)] & self.lower_mask)
             xA = x >> 1
             if (x % 2) != 0:
                 xA %= self.a
@@ -247,19 +254,45 @@ def a_value():
     return number
 
 def catch_seed():
-    pass
-
+    time1 = time.time()
+    number = a_value()
+    time2 = time.time()
+    elapsed = time2 - time1
+    seed = int(elapsed)
+    print 'Seed is probably: ' + str(seed)
+    t = MT19937(seed)
+    first_out = t.extract_number()
+    print 'First output with that seed: ' + str(first_out)
+    if first_out == number:
+        print 'Nobody gets that lucky.'
+    else:
+        print 'Oopsidoozio!'
 
 # for challenge 23: Clone an MT19937 from output
 
-def untwist(number):
+def untemper(number):
+    ## i.e., invert this chunk:
+    # y = y ^ ((y >> self.u) & self.d)
+    # y = y ^ ((y << self.s) & self.b)
+    # y = y ^ ((y << self.t) & self.c)
+    # y = y ^ (y >> self.l)
+    # self.index += 1
+    # return ((1 << self.w) - 1) & y
     pass
 
-def rebuild_state(outputs):
-    pass
+def rebuild_state(outputs): # assumes outputs is in append order of output from twister
+    state = []
+    for _ in xrange(len(outputs)):
+        value = untemper(outputs.pop())
+        state.append(value)
+    return state
 
-def clone_twister(twister):
-    pass
+def clone_twister(outputs):
+    state = rebuild_state(outputs)
+    clone = MT19937()
+    clone.state = state
+    clone.index = 0
+    return clone
 
 
 # for challenge 24: Create & break MT19937 stream cipher
