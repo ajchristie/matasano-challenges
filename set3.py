@@ -53,13 +53,12 @@ def padding_attack(): # this still needs to be debugged
         for j in xrange(15, -1, -1):
             maul = maul[:max(j, padding_value)] + chr(padding_value)*max(j, padding_value)
             attack_value = 0
-
             for k in xrange(1,256):
                 maul[j] = chr(k)
                 submission = maul + C
                 if padding_oracle(submission):
                     attack_value = k
-                    break
+                    break # should this short circuit? or save all hits?
             padding_value += 1
 
             edge_check = True if j == 15 else False
@@ -74,12 +73,13 @@ def padding_attack(): # this still needs to be debugged
                         index -= 1
                     else:
                         edge_check = False
-
-            P += chr((padding_value ^ attack_value) ^ ord(C[j]))
+            # below, the higher padding is the one we're aiming for next pass; smaller presumed
+            P += chr(((padding_value - 1) ^ attack_value) ^ ord(C[j]))
+            tail_value = chr(((padding_value - 1) ^ attack_value) ^ padding_value)
         pblocks.append(P)
     return ''.join(pblocks), decAESCBC(ctext, fixed_oracle_key)
 
-def find_padding_length(): # might be better that sticking that edge check in above...
+def find_padding_length(block): # might be better that sticking that edge check in above...
     pass
 
 # for challenge 18: Implement CTR mode
@@ -92,10 +92,7 @@ def AESCTR(ptext, key, nonce=None): # nonce should be little endian bytestring
     ctext = ''
     counter = 0
     IV = nonce + struct.pack('<q', counter)
-    num_blocks = len(ptext) / 16
-    if len(ptext) % 16 != 0:
-        num_blocks += 1
-    for i in xrange(0, num_blocks*16, 16):
+    for i in xrange(0, len(ptext), 16):
         ctext += fixedXOR(ptext[i:i+16], cipher.encrypt(IV))
         counter += 1
         IV = nonce + struct.pack('<q', counter)
@@ -149,8 +146,8 @@ def make_ciphertexts():
 def CTR_break1():
     ctexts = make_ciphertexts()
     pass
-    # ETAOIN SHRDLU. Skip this for now, since the method that forst occurred to me was the one in
-    # the next challenge anyway. I'll come back.
+    # ETAOIN SHRDLU. I'll skip this for now, since the method that first occurred to me was the one
+    # in the next challenge anyway. I'll come back eventually.
 
 
 # for challenge 20: Break fixed-nonce CTR Vigenere style
@@ -190,21 +187,8 @@ class MT19937:
     def __init__(self, seed=None):
         self.w = 32
         self.n = 624
-        self.m = 397
-        self.r = 31
-        self.a = int(0x9908B0DF)
-        self.u = 11
-        self.d = int(0xFFFFFFFF)
-        self.s = 7
-        self.b = int(0x9D2C5680)
-        self.t = 15
-        self.c = int(0xEFC60000)
-        self.l = 18
-        self.f = 1812433253
         self.state = [0]*self.n
         self.index = self.n + 1
-        self.lower_mask = (1 << self.r) - 1
-        self.upper_mask = ((1 << self.w) - 1) & ~(self.lower_mask)
         if seed is not None:
             self.seed_state(seed)
         else:
@@ -215,26 +199,26 @@ class MT19937:
         self.state[0] = value
         for i in xrange(1, self.n):
             self.state[i] = ((1 << self.w) - 1) & (
-                self.f * (self.state[i-1] ^ (self.state[i-1] >> (self.w - 2))) + i)
+                1812433253 * (self.state[i-1] ^ (self.state[i-1] >> (self.w - 2))) + i)
 
     def extract_number(self):
         if self.index >= self.n:
             self.twist()
         y = self.state[self.index]
-        y = y ^ ((y >> self.u) & self.d)
-        y = y ^ ((y << self.s) & self.b)
-        y = y ^ ((y << self.t) & self.c)
-        y = y ^ (y >> self.l)
+        y = y ^ ((y >> 11) & 0xFFFFFFFF)
+        y = y ^ ((y << 7) & 0x9D2C5680)
+        y = y ^ ((y << 15) & 0xEFC60000)
+        y = y ^ (y >> 18)
         self.index += 1
-        return ((1 << self.w) - 1) & y
+        return y
 
     def twist(self):
         for i in xrange(self.n):
-            x = (self.state[i] & self.upper_mask) + (self.state[(i+1) % (self.n)] & self.lower_mask)
+            x = (self.state[i] & (((1 << self.w) - 1) & ~((1 << 31) - 1))) + (self.state[(i+1) % (self.n)] & ((1 << 31) - 1))
             xA = x >> 1
-            if (x % 2) != 0:
-                xA %= self.a
-            self.state[i] = self.state[(i + self.m) % self.n] ^ xA
+            if x % 2:
+                xA %= 0x9908B0DF
+            self.state[i] = self.state[(i + 397) % self.n] ^ xA
         self.index = 0
 
 
@@ -243,47 +227,59 @@ import time
 
 def a_value():
     generator = MT19937()
-    wait_time = random.randint(40, 1000)
+    wait_time = random.randint(20, 60)
     time.sleep(wait_time)
-    MT19937.seed_state(int(time.time()))
+    generator.seed_state(int(time.time()))
     wait_time = random.randint(40, 1000)
     print "You'll be waiting " + str(wait_time) + " seconds."
     time.sleep(wait_time)
-    number = MT19937.extract_number()
+    number = generator.extract_number()
     print "Here you go: " + str(number)
     return number
 
 def catch_seed():
-    time1 = time.time()
+    time1 = int(time.time())
     number = a_value()
-    time2 = time.time()
-    elapsed = time2 - time1
-    seed = int(elapsed)
-    print 'Seed is probably: ' + str(seed)
-    t = MT19937(seed)
-    first_out = t.extract_number()
-    print 'First output with that seed: ' + str(first_out)
-    if first_out == number:
-        print 'Nobody gets that lucky.'
+    time2 = int(time.time())
+    for i in xrange(time2, time1, -1):
+        t = MT19937(seed)
+        first_out = t.extract_number()
+        if first_out == number:
+            print 'Winner: ' + str(seed)
+            print 'First output with that seed: ' + str(first_out)
+            print 'Target: ' + str(number)
+            print 'Nobody gets that lucky.'
     else:
-        print 'Oopsidoozio!'
+        print 'Oopsidoozio! No matches.'
 
 # for challenge 23: Clone an MT19937 from output
 
-def untemper(number):
-    ## i.e., invert this chunk:
-    # y = y ^ ((y >> self.u) & self.d)
-    # y = y ^ ((y << self.s) & self.b)
-    # y = y ^ ((y << self.t) & self.c)
-    # y = y ^ (y >> self.l)
-    # self.index += 1
-    # return ((1 << self.w) - 1) & y
-    pass
+def temper(y):
+    y = y ^ ((y >> 11) & 0xFFFFFFFF) # bits 1 through 21 affected by 12 - 32
+    y = y ^ ((y << 7) & 0x9D2C5680)  # bits 8 through 32 by 1 - 24
+    y = y ^ ((y << 15) & 0xEFC60000) # bits 18 through 32 by 2 - 16
+    y = y ^ (y >> 18) # bits 1 through 14 by 19 - 32
+    return y
+
+def untemper(y):
+    y = y ^ (y >> 18)
+    y = y ^ ((y << 15) & 0xEFC60000)
+    window = 0x0000000F
+    while window <= 0xF0000000:
+        inter = (y << 7) & 0x9D2C5680
+        y ^= (inter & window)
+        window *= 16
+    window /= 16
+    while window >= 0x0000000F:
+        inter = (y >> 11) & 0xFFFFFFFF
+        y ^= (inter & window)
+        window /= 16
+    return y
 
 def rebuild_state(outputs): # assumes outputs is in append order of output from twister
     state = []
-    for _ in xrange(len(outputs)):
-        value = untemper(outputs.pop())
+    for i in xrange(len(outputs)):
+        value = untemper(outputs[i])
         state.append(value)
     return state
 
@@ -298,4 +294,47 @@ def clone_twister(outputs):
 # for challenge 24: Create & break MT19937 stream cipher
 
 def MTCTR(ptext, seed):
-    pass
+    t = MT19937(seed)
+    ctext = ''
+    for i in xrange(0, len(ptext), 4):
+        ctext += fixedXOR(ptext[i:i+4], struct.pack('l', t.extract_number()))
+    return ctext
+
+def a_ctext(s):
+    prefix_size = random.randint(1, 15)
+    prefix = os.urandom(prefix_size)
+    ptext = prefix + 'AAAAAAAAAAAAAA'
+    return MTCTR(ptext, s)
+
+def recover_key():
+    seed = random.randint(1, (2**16) - 1)
+    ctext = a_ctext(seed)
+    for i in xrange(65536):
+        ptext = MTCTR(ctext, i)
+        if ptext[-14:] == 'AAAAAAAAAAAAAA':
+            print 'Seed match: ' + str(i)
+            print 'Actual seed: ' + str(seed)
+    print 'No match found!!'
+
+def make_token():
+    t = MT19937(time.time())
+    raw_token = ''
+    for _ in xrange(32):
+        raw_token += struct.pack('l', t.extract_number())
+    return raw_token.encode('base64')
+
+def is_from_time(token):
+    raw_token = token.decode('base64')
+    time = time.time()
+    # we'll assume any prospective token was created in the last hour... could be something else
+    t = MT19937()
+    print 'Looking to match: ' + token
+    for i in xrange(3600):
+        t.seed_state(time - i)
+        comp = ''
+        for _ in xrange(32):
+            comp += struct.pack('l', t.extract_number())
+        if comp == raw_token:
+            print 'Matching token found: ' + comp
+            print 'Seed: ' + str(time - i)
+    print 'No matches. Either not a token or created more than an hour ago.'
