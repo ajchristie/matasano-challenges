@@ -51,7 +51,7 @@ def padding_attack():
         padding_value = 0
         tail_value = '\x00'
         for j in xrange(15, -1, -1): # break block
-            maul = maul[:j] + tail_value*padding_value
+            maul = maul[:j+1] + tail_value*padding_value
             attack_value = 0
             for k in xrange(256): # scan for valid padding
                 maul[j] = chr(k)
