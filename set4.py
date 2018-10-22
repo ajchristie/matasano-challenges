@@ -109,13 +109,13 @@ def recover_key():
     try:
         ptext2 = decrypt_and_validate(maul)
     except ValueError as e:
-        ptext = e.message[30:]
+        ptext = e[30:]
     block1 = ptext[:16]
     block3 = ptext[32:]
     key = fixedXOR(block1, block3)
     print 'Key recovered: ' + key
     print 'Actual key: ' + fixed_oracle_key
-    
+
 
 # for challenge 28: SHA-1 Keyed MAC
 from struct import pack, unpack
@@ -182,6 +182,77 @@ def valid_MAC(message, mac, key):
 
 
 # for challenge 29: Break SHA-1 MAC with length extension
+
+# you'll need to use this to search for the leader of your forgery: you have the message and the
+# MAC itself -- just prepend likely key size things to it, and then generate...
+def generate_padding(message):
+    padding = chr(128) + chr(0) * (55 - len(message) % 64)
+    if len(message) % 64 > 55:
+        padding += chr(0) * (64 + 55 - len(message) % 64)
+    return padding + pack('>Q', 8 * len(message))
+
+def extend_sha1(digest, newdata):
+    h0 = digest[:8]
+    h1 = digest[8:16]
+    h2 = digest[16:24]
+    h3 = digest[24:32]
+    h4 = digest[32:40]
+
+    def rol(n, b):
+        return ((n << b) | (n >> (32 - b))) & 0xffffffff
+
+    # After the data, append a '1' bit, then pad data to a multiple of 64 bytes
+    # (512 bits).  The last 64 bits must contain the length of the original
+    # string in bits, so leave room for that (adding a whole padding block if
+    # necessary).
+    padding = chr(128) + chr(0) * (55 - len(newdata) % 64)
+    if len(newdata) % 64 > 55:
+        padding += chr(0) * (64 + 55 - len(newdata) % 64)
+    padded_data = newdata + padding + pack('>Q', 8 * len(newdata))
+
+    thunks = [padded_data[i:i+64] for i in range(0, len(padded_data), 64)]
+    for thunk in thunks:
+        w = list(unpack('>16L', thunk)) + [0] * 64
+        for i in range(16, 80):
+            w[i] = rol((w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]), 1)
+
+        a, b, c, d, e = h0, h1, h2, h3, h4
+
+        # Main loop
+        for i in range(0, 80):
+            if 0 <= i < 20:
+                f = (b & c) | ((~b) & d)
+                k = 0x5A827999
+            elif 20 <= i < 40:
+                f = b ^ c ^ d
+                k = 0x6ED9EBA1
+            elif 40 <= i < 60:
+                f = (b & c) | (b & d) | (c & d)
+                k = 0x8F1BBCDC
+            elif 60 <= i < 80:
+                f = b ^ c ^ d
+                k = 0xCA62C1D6
+
+            a, b, c, d, e = rol(a, 5) + f + e + k + w[i] & 0xffffffff, \
+                            a, rol(b, 30), c, d
+
+        h0 = h0 + a & 0xffffffff
+        h1 = h1 + b & 0xffffffff
+        h2 = h2 + c & 0xffffffff
+        h3 = h3 + d & 0xffffffff
+        h4 = h4 + e & 0xffffffff
+
+    return '%08x%08x%08x%08x%08x' % (h0, h1, h2, h3, h4)
+
+def test_forgery():
+    original = "comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon"
+    key = os.urandom(10)
+    mac = SHAMAC(original, key)
+    forgery = extend_sha1(mac, ';admin-true')
+    target = SHAMAC(original + generate_padding(key+original) + ';admin=true', key)
+    print 'Result: ' + str(valid_MAC(forgery, target))
+    print 'Target: ' + target
+    print 'Your forgery: ' + forgery
 
 
 # for challenge 30: Break MD4 MAC with length extension
