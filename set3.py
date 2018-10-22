@@ -39,7 +39,7 @@ def padding_oracle(ctext):
     except ValueError:
         return False
 
-def padding_attack(): # this still needs to be debugged
+def padding_attack():
     ctext, IV = send_token()
     cblocks = [IV]
     cblocks.extend(make_segments(ctext, 16))
@@ -48,39 +48,31 @@ def padding_attack(): # this still needs to be debugged
     for i in xrange(len(cblocks)):
         P = ''
         C = cblocks[i+1]  # block to be decrypted
-        padding_value = 1 # assumed value of valid padding
-
-        for j in xrange(15, -1, -1):
-            maul = maul[:max(j, padding_value)] + chr(padding_value)*max(j, padding_value)
+        padding_value = 0
+        tail_value = '\x00'
+        for j in xrange(15, -1, -1): # break block
+            maul = maul[:j] + tail_value*padding_value
             attack_value = 0
-            for k in xrange(1,256):
+            for k in xrange(256): # scan for valid padding
                 maul[j] = chr(k)
-                submission = maul + C
-                if padding_oracle(submission):
+                sub = maul + C
+                if padding_oracle(sub):
+                    if j == 15: # check for edge case: valid padding != \x01
+                        subsub = sub[:j-1] + chr(ord('\xFF') ^ ord(sub[j-1])) + sub[j:]
+                        if padding_oracle(subsub): # not in edge case
+                            attack_value = k
+                            break
                     attack_value = k
-                    break # should this short circuit? or save all hits?
+                    break
+            else: # full loop with no match
+                raise ValueError('No match found for %s, %s' % (j, k))
+            # if we make it here, a match was found and the padding is as expected
             padding_value += 1
-
-            edge_check = True if j == 15 else False
-            while edge_check: # on first pass each block, resolve what valid amount of padding is
-                index = j-1
-                for k in xrange(1, 256):
-                    temp = maul[:index] + chr(k)
-                    submission = temp + C
-                    if padding_oracle(submission):
-                        padding_value += 1
-                        attack_value = k
-                        index -= 1
-                    else:
-                        edge_check = False
-            # below, the higher padding is the one we're aiming for next pass; smaller presumed
-            P += chr(((padding_value - 1) ^ attack_value) ^ ord(C[j]))
-            tail_value = chr(((padding_value - 1) ^ attack_value) ^ padding_value)
+            P += chr(((padding_value) ^ attack_value) ^ ord(C[j]))
+            tail_value = chr(((padding_value) ^ attack_value) ^ (padding_value + 1))
         pblocks.append(P)
     return ''.join(pblocks), decAESCBC(ctext, fixed_oracle_key)
 
-def find_padding_length(block): # might be better that sticking that edge check in above...
-    pass
 
 # for challenge 18: Implement CTR mode
 import struct
@@ -242,7 +234,7 @@ def catch_seed():
     number = a_value()
     time2 = int(time.time())
     for i in xrange(time2, time1, -1):
-        t = MT19937(seed)
+        t = MT19937(i)
         first_out = t.extract_number()
         if first_out == number:
             print 'Winner: ' + str(seed)
@@ -307,14 +299,16 @@ def a_ctext(s):
     return MTCTR(ptext, s)
 
 def recover_key():
-    seed = random.randint(1, (2**16) - 1)
+    seed = random.randint(1, 65536)
     ctext = a_ctext(seed)
     for i in xrange(65536):
         ptext = MTCTR(ctext, i)
         if ptext[-14:] == 'AAAAAAAAAAAAAA':
             print 'Seed match: ' + str(i)
             print 'Actual seed: ' + str(seed)
+            return None
     print 'No match found!!'
+    return None
 
 def make_token():
     t = MT19937(time.time())
@@ -337,4 +331,5 @@ def is_from_time(token):
         if comp == raw_token:
             print 'Matching token found: ' + comp
             print 'Seed: ' + str(time - i)
+            return None
     print 'No matches. Either not a token or created more than an hour ago.'
