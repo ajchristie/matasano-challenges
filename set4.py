@@ -264,7 +264,8 @@ def test_forgery():
 # for challenge 30: Break MD4 MAC with length extension
 
 # this is similar enough to the previous challenge and I'm eager enough to move on to the next
-# set that I'll skip this for now.
+# set that I'll skip this for now. It's just a matter of cooking up an implementation of MD4 that
+# gives access to registers and length input.
 
 
 # for challenge 31: Implement HMAC-SHA-1 and break with artificial timing leak
