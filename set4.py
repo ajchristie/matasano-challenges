@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 import os
 import random
+import time
 fixed_oracle_key = os.urandom(16)
 nonce = os.urandom(8)
 from set2 import fixedXOR, make_segments, PKCS, check_and_strip_PKCS
@@ -183,20 +184,23 @@ def valid_MAC(message, mac, key):
 
 # for challenge 29: Break SHA-1 MAC with length extension
 
-# you'll need to use this to search for the leader of your forgery: you have the message and the
-# MAC itself -- just prepend likely key size things to it, and then generate...
 def generate_padding(message):
     padding = chr(128) + chr(0) * (55 - len(message) % 64)
     if len(message) % 64 > 55:
         padding += chr(0) * (64 + 55 - len(message) % 64)
     return padding + pack('>Q', 8 * len(message))
 
-def extend_sha1(digest, newdata):
-    h0 = digest[:8]
-    h1 = digest[8:16]
-    h2 = digest[16:24]
-    h3 = digest[24:32]
-    h4 = digest[32:40]
+def extend_sha1(digest, newdata, length):
+    # length is passed in separately and should be equal to the length of the full forged message:
+    # key, message, glue, and newdata. The length of data is assumed to be known because an attacker
+    # has the message. You could also assume the length of the key is known if this is all part
+    # of some protocol that specifies the size of the key. If not, you'd just create different
+    # extensions using different guesses at the length until one is accepted.
+    h0 = unpack('l', digest[:8])[0]
+    h1 = unpack('l', digest[8:16])[0]
+    h2 = unpack('l', digest[16:24])[0]
+    h3 = unpack('l', digest[24:32])[0]
+    h4 = unpack('l', digest[32:40])[0]
 
     def rol(n, b):
         return ((n << b) | (n >> (32 - b))) & 0xffffffff
@@ -205,10 +209,11 @@ def extend_sha1(digest, newdata):
     # (512 bits).  The last 64 bits must contain the length of the original
     # string in bits, so leave room for that (adding a whole padding block if
     # necessary).
-    padding = chr(128) + chr(0) * (55 - len(newdata) % 64)
+
+    padding = chr(128) + chr(0) * (55 - length % 64)
     if len(newdata) % 64 > 55:
-        padding += chr(0) * (64 + 55 - len(newdata) % 64)
-    padded_data = newdata + padding + pack('>Q', 8 * len(newdata))
+        padding += chr(0) * (64 + 55 - length % 64)
+    padded_data = newdata + padding + pack('>Q', 8 * length)
 
     thunks = [padded_data[i:i+64] for i in range(0, len(padded_data), 64)]
     for thunk in thunks:
@@ -247,18 +252,84 @@ def extend_sha1(digest, newdata):
 def test_forgery():
     original = "comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon"
     key = os.urandom(10)
+    length = len(key) + len(original) + len(generate_padding(key + original)) + 11
     mac = SHAMAC(original, key)
-    forgery = extend_sha1(mac, ';admin-true')
+    forgery = extend_sha1(mac, ';admin=true', length)
     target = SHAMAC(original + generate_padding(key+original) + ';admin=true', key)
-    print 'Result: ' + str(valid_MAC(forgery, target))
+    print 'Result: ' + str(valid_MAC(forgery, target, key))
     print 'Target: ' + target
     print 'Your forgery: ' + forgery
 
 
 # for challenge 30: Break MD4 MAC with length extension
 
+# this is similar enough to the previous challenge and I'm eager enough to move on to the next
+# set that I'll skip this for now.
+
 
 # for challenge 31: Implement HMAC-SHA-1 and break with artificial timing leak
+import web
+import requests
+
+def HMAC(message, key):
+    if len(key) > 64:
+        key = sha1(key)
+    elif len(key) < 64:
+        key += '\x00'*(64 - len(key))
+    inner_pad = fixedXOR(key, '\x36'*64)
+    outer_pad = fixedXOR(key, '\x5C'*64)
+    return sha1(outerpad + sha1(inner_pad + message))
+
+urls = ('/test', 'test')
+
+def insecure_compare(signature, validator):
+    raw_sig = signature.decode('hex')
+    raw_valid = validator.decode('hex')
+    for i in len(raw_sig):
+        if raw_sig[i] != raw_valid[i]:
+            return False
+        time.sleep(.05)
+    return True
+
+class test:
+    def GET(self):
+        data = web.input()
+        file = data.file
+        sig = data.signature
+        hm = HMAC(file, fixed_oracle_key)
+        return 200 if insecure_compare(sig, hm) else 500
+
+def run_test():
+    app = web.application(urls, globals())
+    app.run()
+
+def break_HMAC(file): # make sure run_test is running
+    url = 'http://localhost:9000/test?file=' + file + '&signature='
+    status = 500
+    hm = ''
+    tries = 0
+    while status == 500 and tries < 5:
+        for i in xrange(40):
+            maxtime = 0
+            nextchar = ''
+            for j in xrange(16):
+                probe = sig + chr(j) + '0'*(40-(i+1))
+                address = url + probe
+                send = time.time()
+                r = requests.get(address)
+                receive = time.time()
+                elapsed = recieve - send
+                if elapsed > maxtime:
+                    maxtime = elapsed
+                    nextchar = chr(j)
+            hm += nextchar
+        tries += 1
+        status = r.status_code
+    print 'Done. Status ' + str(status)
+    print 'Forged HMAC: ' + hm
+    print 'Actual HMAC: ' + HMAC(file, fixed_oracle_key)
 
 
 # for challenge 32: Ditto, but less articial timing leak
+
+# see above.

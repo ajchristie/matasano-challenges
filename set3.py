@@ -45,7 +45,7 @@ def padding_attack():
     cblocks.extend(make_segments(ctext, 16))
     maul = '\x00'*16
     pblocks = []
-    for i in xrange(len(cblocks)):
+    for i in xrange(len(cblocks)-1):
         P = ''
         C = cblocks[i+1]  # block to be decrypted
         padding_value = 0
@@ -65,10 +65,10 @@ def padding_attack():
                     attack_value = k
                     break
             else: # full loop with no match
-                raise ValueError('No match found for %s, %s' % (j, k))
+                raise ValueError('No match found for block %s, byte %s' % (j, k))
             # if we make it here, a match was found and the padding is as expected
             padding_value += 1
-            P += chr(((padding_value) ^ attack_value) ^ ord(C[j]))
+            P += chr(((padding_value) ^ attack_value) ^ ord(cblocks[i][j]))
             tail_value = chr(((padding_value) ^ attack_value) ^ (padding_value + 1))
         pblocks.append(P)
     return ''.join(pblocks), decAESCBC(ctext, fixed_oracle_key)
@@ -237,7 +237,7 @@ def catch_seed():
         t = MT19937(i)
         first_out = t.extract_number()
         if first_out == number:
-            print 'Winner: ' + str(seed)
+            print 'Winner: ' + str(i)
             print 'First output with that seed: ' + str(first_out)
             print 'Target: ' + str(number)
             print 'Nobody gets that lucky.'
