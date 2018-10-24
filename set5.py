@@ -3,6 +3,7 @@ import random
 import hashlib
 import requests
 import web
+from set2 import fixedXOR
 
 # for challenge 33: Implement Diffie-Hellman
 # parameters:
@@ -177,10 +178,8 @@ def SRP_authenticate(passwd):
 
 
 # for challange 37: Break SRP with zero key
-# The basic idea here is that if the protocol doesn't include a check to make sure it hasn't
-# been passed a 0 as ephemeral value, you can get away with not knowing the private random
-# value or password, because the session key the server will end up calculating is just
-# H(0)
+# The basic idea here is that if the protocol doesn't include a check on the server to make sure it # hasn't been passed a 0 as ephemeral value, you can get away with not knowing the private random
+# value or password because the session key the server will end up calculating is just H(s, 0)
 
 
 # for challenge 38: Offline dictionary attack on SRP
