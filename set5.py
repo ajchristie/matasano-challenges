@@ -1,8 +1,6 @@
 #!/usr/bin/env python2
 import random
 import hashlib
-import requests
-import web
 from set2 import fixedXOR
 
 # for challenge 33: Implement Diffie-Hellman
@@ -64,6 +62,7 @@ def DH_handshake():
     print 'B generates: {} (public)'.format(Bkeys[0])
     print '{:>13} (private)'.format(Bkeys[1])
     print '\n\n'
+
     print 'A and B communicate their public keys to each other and raises to the power of their private keys:'
     Asecret = make_session_key(Akeys[1], Bkeys[0])
     Bsecret = make_session_key(Bkeys[1], Akeys[0])
@@ -71,6 +70,7 @@ def DH_handshake():
     print "B's secret: {}".format(Bsecret)
     print 'Shared?: ' + str(Asecret == Bsecret)
     print '\n\n'
+
     print 'A and B derive a session key from this shared secret by hashing:'
     if Asecret == Bsecret:
         print 'Session key: {}'.format(derive_key(Asecret))
@@ -78,7 +78,7 @@ def DH_handshake():
         print "Well, they can't because the secrets don't match. Darn."
 
 # for challenge 34: Implement MITM key fixing
-# this is really almost only fun, or more enlightening, if you actually do the networking part.
+# this is really almost only fun, or enlightening, if you actually do the networking part.
 # Later. Write a function that just performs the protocol steps and prints out the result at each
 # step so you can see it working.
 
@@ -150,7 +150,7 @@ def SRP_authenticate(passwd):
     print '3. Server and Client compute scrambling value:'
     Hscramble = hashlib.sha256(str(A) + str(B)).hexdigest()
     scramble = int(Hscramble, 16)
-    print 'uH={}, u={}'.format(Hscramble, scramble)
+    print '   uH={}, u={}'.format(Hscramble, scramble)
 
     print '4. Client computes:'
     xH = hashlib.sha256(str(s) + passwd)
@@ -167,19 +167,20 @@ def SRP_authenticate(passwd):
 
     print '6. Client -> Server:'
     hm = HMAC(str(s), client_key)
-    print 'HMAC-SHA256(K, s)={}'.format(hm)
+    print '   HMAC-SHA256(K, s)={}'.format(hm)
 
     print '7. Server response:'
     server_hm = HMAC(str(s), server_key)
     if server_hm == hm:
-        print 'OK'
+        print '   OK'
     else:
-        print 'AUTHENTICATION FAILED'
+        print '   AUTHENTICATION FAILED'
 
 
 # for challange 37: Break SRP with zero key
 # The basic idea here is that if the protocol doesn't include a check on the server to make sure it # hasn't been passed a 0 as ephemeral value, you can get away with not knowing the private random
-# value or password because the session key the server will end up calculating is just H(s, 0)
+# value or password because the session key the server will end up calculating is just H(s, 0), and
+# s is passed back by the server in step 2 of the protocol w/o requiring any authentication. Easy.
 
 
 # for challenge 38: Offline dictionary attack on SRP
@@ -187,7 +188,65 @@ def SRP_authenticate(passwd):
 
 
 # for challenge 39: Implement RSA
+import subprocess
 
+def ext_gcd(m, n):
+    """
+    Return a triple: (gcd(m,n), a, b), where a and b are Bezout coefficients, i.e.,
+        am + bn = gcd(m, n)
+    """
+    if m == 0:
+        return (n, 0, 1)
+    else:
+        g, y, x = ext_gcd(n % m, m)
+        return (g, x - (n // m) * y, y)
 
+def modinv(x, mod):
+    """
+    Returns the inverse of integer x modulo mod, which are assumed to be coprime. This DOES NOT perform safety checks for coprimality. If gcd(x, mod) != 1, this function will return the Bezout coefficient of x in the gcd reduction.
+    """
+    _, inv, _ = ext_gcd(x, mod)
+    return inv % mod
+
+def RSA(message, key, p, q, encrypt=True):
+    """
+    Performs toy RSA encryption with hardcoded parameters. Decrypt flag sets mode (decryption by default)
+    """
+
+    ## test data
+    #p = 9817
+    #q = 9907
+    #e = 65537
+    #c = 36076319
+    #d = modinv(e, lcm(p - 1, q - 1))
+
+    if encrypt:
+        return pow(message, e, p*q)
+    else:
+        m1 = pow(message, d % p-1, p)
+        m2 = pow(message, d % q-1, q)
+        qinv = modinv(q, p)
+        h = (qinv * (m1 - m2)) % p
+        return m2 + h*q
+
+def RSA_demo(message): # message should just be a number, and not especially big
+    P = int(subprocess.check_output(["openssl", "prime", "-generate", "-bits", "2048"))
+    Q = int(subprocess.check_ouput(["openssl", "prime", "-generate", "-bits", "2048"]))
+    N = P * Q
+    print 'Generate parameters: p={}'.format(P)
+    print '                     q={}'.format(Q)
+    print '                     N={}'.format(N)
+    print '\nPublic key: (e=3, N)'
+    d = modinv(3, N)
+    print 'Private key: d={}'.format(d)
+    print '\n'
+    print 'Your message: ' + str(message)
+    c = RSA(message, d, P, Q)
+    ctext = hex(c)[2:]
+    print 'Encrypted: ' + ctext
+    reconverted = int(ctext, 16)
+    ptext = RSA(reconverted, e, P, Q, encrypt=False)
+    print 'Decrypted: ' + str(ptext)
 
 # for challenge 40: Implement RSA e=3 broadcast attack
+# This is just understanding CRT. Which I do.
