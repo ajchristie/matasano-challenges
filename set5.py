@@ -208,6 +208,12 @@ def modinv(x, mod):
     _, inv, _ = ext_gcd(x, mod)
     return inv % mod
 
+def string_convert(string):
+    return int(string.encode('hex'), 16)
+
+def num_convert(num):
+    return hex(num)[2:-1].decode('hex')
+
 def RSA(message, key, p, q, encrypt=True):
     """
     Performs toy RSA encryption with hardcoded parameters. Decrypt flag sets mode (decryption by default)
@@ -231,7 +237,7 @@ def RSA(message, key, p, q, encrypt=True):
 
 def RSA_demo(message): # message should just be a number, and not especially big
     P = int(subprocess.check_output(["openssl", "prime", "-generate", "-bits", "2048"))
-    Q = int(subprocess.check_ouput(["openssl", "prime", "-generate", "-bits", "2048"]))
+    Q = int(subprocess.check_output(["openssl", "prime", "-generate", "-bits", "2048"]))
     N = P * Q
     print 'Generate parameters: p={}'.format(P)
     print '                     q={}'.format(Q)
