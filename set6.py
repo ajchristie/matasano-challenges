@@ -8,7 +8,6 @@ from set5 import modinv, RSA_decrypt, RSA_encrypt
 
 
 # for challenge 42: Bleichenbacher's e=3 RSA attack
-
 HASH_ASN1 = {
     'MD5': b('\x30\x20\x30\x0c\x06\x08\x2a\x86'
              '\x48\x86\xf7\x0d\x02\x05\x05\x00\x04\x10'),
@@ -22,6 +21,14 @@ HASH_ASN1 = {
                  '\x48\x01\x65\x03\x04\x02\x03\x05\x00\x04\x40'),
 }
 
+def faulty_pad_check(message, signature, pub_key, modulus):
+    pass
+
+def forge_signature(message):
+    pass
+
+def nth_root(x):
+    pass
 
 
 # for challenge 43: DSA key recovery from nonce
@@ -131,7 +138,9 @@ def recover_key_rep_nonce():
 
 
 # for challenge 45: DSA parameter tampering
-
+# Setting g = 0 won't work because there's a check for r = 0 at the front of the verify method.
+# If that weren't there, verifier = 0 and everything would verify.
+# Taking g = 1 will still pass, however...
 
 
 # for challenge 46: RSA parity oracle
@@ -147,6 +156,9 @@ def make_ctext():
 
 def RSA_parity(message):
     return (RSA_decrypt(message, d46, p46, q46) % 2) == 0
+
+def parity_decrypt():
+    pass
 
 
 
