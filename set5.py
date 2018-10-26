@@ -212,12 +212,14 @@ def string_convert(string):
     return int(string.encode('hex'), 16)
 
 def num_convert(num):
+    # this is touchy in general; you could wrap this in a try and catch the typeerror if there's
+    # an L appended to hex(num)
     return hex(num)[2:-1].decode('hex')
 
-def RSA(message, key, p, q, encrypt=True):
-    """
-    Performs toy RSA encryption with hardcoded parameters. Decrypt flag sets mode (decryption by default)
-    """
+def RSA_encrypt(message, key, modulus):
+    return mod_exp(message, key, modulus)
+
+def RSA_decrypt(message, key, p, q):
 
     ## test data
     #p = 9817
@@ -226,14 +228,11 @@ def RSA(message, key, p, q, encrypt=True):
     #c = 36076319
     #d = modinv(e, lcm(p - 1, q - 1))
 
-    if encrypt:
-        return pow(message, e, p*q)
-    else:
-        m1 = pow(message, d % p-1, p)
-        m2 = pow(message, d % q-1, q)
-        qinv = modinv(q, p)
-        h = (qinv * (m1 - m2)) % p
-        return m2 + h*q
+    m1 = mod_exp(message, d % p-1, p)
+    m2 = mod_exp(message, d % q-1, q)
+    qinv = modinv(q, p)
+    h = (qinv * (m1 - m2)) % p
+    return m2 + h*q
 
 def RSA_demo(message): # message should just be a number, and not especially big
     P = int(subprocess.check_output(["openssl", "prime", "-generate", "-bits", "2048"))
@@ -247,11 +246,11 @@ def RSA_demo(message): # message should just be a number, and not especially big
     print 'Private key: d={}'.format(d)
     print '\n'
     print 'Your message: ' + str(message)
-    c = RSA(message, d, P, Q)
+    c = RSA_encrypt(message, d, N)
     ctext = hex(c)[2:]
     print 'Encrypted: ' + ctext
     reconverted = int(ctext, 16)
-    ptext = RSA(reconverted, e, P, Q, encrypt=False)
+    ptext = RSA_decrypt(reconverted, e, P, Q)
     print 'Decrypted: ' + str(ptext)
 
 # for challenge 40: Implement RSA e=3 broadcast attack
