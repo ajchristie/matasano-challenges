@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 import random
 import hashlib
-from set5 import modinv, RSA_decrypt, RSA_encrypt
+from set5 import modinv, RSA_decrypt, RSA_encrypt, num_convert
 
 # for challenge 41: Implement an unpadded message recovery oracle
 # This is just an easy 'dangers of malleability' exercise. Skipping for now.
@@ -22,13 +22,40 @@ HASH_ASN1 = {
 }
 
 def faulty_pad_check(message, signature, pub_key, modulus):
-    pass
+    if signature[:2] != '\x00\x01':
+        return False
+    i = 2
+    while signature[i] == '\xFF':
+        i += 1
+    if i == 2:
+        return False
+    if signature[i] != '\x00':
+        return False
+    if signature[i+1:i+16] != HASH_ASN1['SHA-1']:
+        return False
+    if signature[i+16:i+26] != hashlib.sha1(message).digest():
+        return False
+    return True
 
 def forge_signature(message):
-    pass
+    hash = hashlib.sha1(message).digest()
+    padding = '\x00\x01\xFF\xFF\xFF\xFF\x00' + HASH_ASN1['SHA-1'] + hash
+    # these last lines could be looped to make sure the shift is enough for arbitrary messages
+    # i.e., actually check it before returning
+    cube = int(padding.encode('hex'), 16) * (16 * (128 - len(padding)))
+    return nth_root(cube, 3) + 1 # since nth_root returns _under_ the true root
 
-def nth_root(x):
-    pass
+def nth_root(x, n): # make sure x != 0
+    """ Returns nearest integer < true nth root of x """
+    root = 1
+    while root**n < x:
+        root *= 2
+    root /= 2
+    for i in xrange(len(bits(root)) - 4, -1, -1):
+        root += (2**i)
+        if root > x:
+            root -= (2**i)
+    return root
 
 
 # for challenge 43: DSA key recovery from nonce
@@ -51,11 +78,11 @@ def sign(mhash, priv_key):
     r = 0
     s = 0
     sha = hashlib.sha1()
-    while r == 0 and s == 0:
+    while r == 0 or s == 0:
         ephemeral = random.SystemRandom().randint(2, q - 1)
         r = pow(g, ephemeral, p) % q
         H = int(mhash, 16)
-        s = modinv(ephemeral, q) * (H + (priv_key * r))
+        s = (modinv(ephemeral, q) * (H + (priv_key * r))) % q
     return r, s
 
 def sign_k(mhash, priv_key, k):
@@ -65,7 +92,7 @@ def sign_k(mhash, priv_key, k):
     while r == 0 and s == 0:
         r = pow(g, k, p) % q
         H = int(mhash, 16)
-        s = modinv(k, q) * (H + (priv_key * r))
+        s = (modinv(k, q) * (H + (priv_key * r))) % q
     return r, s
 
 def verify(mhash, signature, pub_key):
@@ -76,7 +103,7 @@ def verify(mhash, signature, pub_key):
     H = int(mhash, 16)
     u1 = (H * w) % q
     u2 = (r * w) % q
-    v = ((pow(g, u1) * pow(pub_key, u2)) % p) % q
+    v = ((pow(g, u1, p) * pow(pub_key, u2, p)) % p) % q
     return True if v == r else False
 
 def recover_key(mhash, signature, k):
@@ -144,6 +171,7 @@ def recover_key_rep_nonce():
 
 
 # for challenge 46: RSA parity oracle
+import decimal # the parity decrypt can have issues without control over precision
 p46 = 0x00e13584e1373c6d74db0a5b3770dc3b9c50d4d741e92ec71ffac97e5d77be43c9b462e2705aa03e8be8d1feee429eef93a8f87e1c0f27fb123e975cfb785f3371
 q46 = 0x00c2c9c5499a60e3d08f6148af2da4e159b47a01bd5cf9663991f36689ec420af5ca088fc982dca34b8952a63a2bbc312e8b026b3a2431bad235725bc00dc5076f
 N46 = p46 * q46
@@ -152,14 +180,28 @@ d46 = 0x009c3f23daedccb8118941da043d1d2d466c56de1840a774c9557b7c7f87a66e7eafad9a
 message46 = 'VGhhdCdzIHdoeSBJIGZvdW5kIHlvdSBkb24ndCBwbGF5IGFyb3VuZCB3aXRoIHRoZSBGdW5reSBDb2xkIE1lZGluYQ=='
 
 def make_ctext():
-    return RSA_encrypt(message46.decode('base64'), e46, N46)
+    return RSA_encrypt(int(message46.decode('base64').encode('hex'), 16), e46, N46)
 
 def RSA_parity(message):
     return (RSA_decrypt(message, d46, p46, q46) % 2) == 0
 
 def parity_decrypt():
-    pass
-
+    k = 1024 # more generally, bit length of the RSA modulus
+    getcontext().prec = k # set precision of decimals
+    ctext = make_ctext()
+    two = RSA_encrypt(2, e46, N46)
+    lower = Decimal(0)
+    upper = Decimal(N46)
+    for _ in xrange(k):
+        pivot = (lower + upper) / 2
+        if RSA_parity(ctext):
+            upper = pivot # result even; in lower half
+        else:
+            lower = pivot # result odd; in upper half
+        ctext = (ctext * two) % N46
+    ptext = num_convert(int(upper))
+    print 'Recovered message: ' + ptext
+    print 'Actual message: ' + message46.decode('base64')
 
 
 # for challnge 47: Simple Bleichenbacher PKCS1.5 padding oracle
