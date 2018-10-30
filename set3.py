@@ -4,7 +4,7 @@
 import os
 import random
 fixed_oracle_key = os.urandom(16)
-from set2 import encAESCBC, decAESCBC, valid_PKCS, make_segments, fixedXOR
+from set2 import encAESCBC, decAESCBC, valid_PKCS, make_segments, fixedXOR, check_and_strip_PKCS
 from Crypto.Cipher import AES
 
 def send_token():
@@ -43,37 +43,34 @@ def padding_attack():
     ctext, IV = send_token()
     cblocks = [IV]
     cblocks.extend(make_segments(ctext, 16))
-    maul = '\x00'*16
+    maul = bytearray('\x00')*16
     pblocks = []
     for i in xrange(len(cblocks)-1):
         P = ''
         C = cblocks[i+1]  # block to be decrypted
         padding_value = 0
-        tail_value = '\x00'
         for j in xrange(15, -1, -1): # break block
-            maul = maul[:j+1] + tail_value*padding_value
             attack_value = 0
             for k in xrange(256): # scan for valid padding
-                maul[j] = chr(k)
-                sub = maul + C
+                maul[j] = k
+                sub = ''.join(map(chr, maul)) + C
                 if padding_oracle(sub):
                     if j == 15: # check for edge case: valid padding != \x01
                         subsub = sub[:j-1] + chr(ord('\xFF') ^ ord(sub[j-1])) + sub[j:]
-                        if padding_oracle(subsub): # not in edge case
-                            attack_value = k
-                            break
-                        else:
+                        if not padding_oracle(subsub): # in edge case
                             continue
                     attack_value = k
                     break
             else: # full loop with no match
-                raise ValueError('No match found for block %s, byte %s' % (j, k))
+                raise ValueError('No match found for block %s, byte %s' % (i+1, j))
             # if we make it here, a match was found and the padding is as expected
             padding_value += 1
-            P += chr(((padding_value) ^ attack_value) ^ ord(cblocks[i][j]))
-            tail_value = chr(((padding_value) ^ attack_value) ^ (padding_value + 1))
+            P = chr(((padding_value) ^ attack_value) ^ ord(cblocks[i][j])) + P
+            maul[j] = (padding_value ^ attack_value) ^ (padding_value + 1)
+            for t in xrange(j+1, len(maul)):
+                maul[t] ^= (padding_value ^ (padding_value + 1))
         pblocks.append(P)
-    return ''.join(pblocks), decAESCBC(ctext, fixed_oracle_key)
+    return check_and_strip_PKCS(''.join(pblocks)), decAESCBC(ctext, fixed_oracle_key)
 
 
 # for challenge 18: Implement CTR mode
@@ -152,7 +149,7 @@ def loadCT():
     ctexts = [line.strip() for line in ctexts]
     return ctexts
 
-def CTR_break2():
+def CTR_break2(): # need to adapt some of the functions from set1 before this will work
     ctexts = loadCT()
     min_length = min([len(ctext) for ctext in ctexts])
     num_blocks = min_length / 16
@@ -313,7 +310,7 @@ def recover_key():
     return None
 
 def make_token():
-    t = MT19937(time.time())
+    t = MT19937(int(time.time()))
     raw_token = ''
     for _ in xrange(32):
         raw_token += struct.pack('l', t.extract_number())
@@ -322,7 +319,7 @@ def make_token():
 def is_from_time(token):
     raw_token = token.decode('base64')
     time = time.time()
-    # we'll assume any prospective token was created in the last hour... could be something else
+    # we'll assume any prospective token was created in the last hour...
     t = MT19937()
     print 'Looking to match: ' + token
     for i in xrange(3600):
