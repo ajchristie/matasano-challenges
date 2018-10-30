@@ -192,9 +192,9 @@ def generate_padding(message):
 
 def extend_sha1(digest, newdata, length):
     # length is passed in separately and should be equal to the length of the full forged message:
-    # key, message, glue, and newdata. The length of data is assumed to be known because an attacker
-    # has the message. You could also assume the length of the key is known if this is all part
-    # of some protocol that specifies the size of the key. If not, you'd just create different
+    # key, message, glue, and newdata. The length of message is assumed to be known because an
+    # attacker has the message. You could also assume the length of the key is known if this is all
+    # part of some protocol that specifies the size of the key. If not, you'd just create different
     # extensions using different guesses at the length until one is accepted.
     h0 = unpack('l', digest[:8])[0]
     h1 = unpack('l', digest[8:16])[0]
@@ -314,7 +314,7 @@ def break_HMAC(file): # make sure run_test is running
             maxtime = 0
             nextchar = ''
             for j in xrange(16):
-                probe = sig + chr(j) + '0'*(40-(i+1))
+                probe = hm + chr(j) + '0'*(40-(i+1))
                 address = url + probe
                 send = time.time()
                 r = requests.get(address)

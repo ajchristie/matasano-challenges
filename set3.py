@@ -62,6 +62,8 @@ def padding_attack():
                         if padding_oracle(subsub): # not in edge case
                             attack_value = k
                             break
+                        else:
+                            continue
                     attack_value = k
                     break
             else: # full loop with no match

@@ -33,16 +33,14 @@ def faulty_pad_check(message, signature, pub_key, modulus):
         return False
     if signature[i+1:i+16] != HASH_ASN1['SHA-1']:
         return False
-    if signature[i+16:i+26] != hashlib.sha1(message).digest():
+    if signature[i+16:i+36] != hashlib.sha1(message).digest():
         return False
     return True
 
 def forge_signature(message):
     hash = hashlib.sha1(message).digest()
     padding = '\x00\x01\xFF\xFF\xFF\xFF\x00' + HASH_ASN1['SHA-1'] + hash
-    # these last lines could be looped to make sure the shift is enough for arbitrary messages
-    # i.e., actually check it before returning
-    cube = int(padding.encode('hex'), 16) * (16 * (128 - len(padding)))
+    cube = int(padding.encode('hex'), 16) << (8 * (128 - len(padding)))
     return nth_root(cube, 3) + 1 # since nth_root returns _under_ the true root
 
 def nth_root(x, n): # make sure x != 0
@@ -53,7 +51,7 @@ def nth_root(x, n): # make sure x != 0
     root /= 2
     for i in xrange(len(bits(root)) - 4, -1, -1):
         root += (2**i)
-        if root > x:
+        if root**n > x:
             root -= (2**i)
     return root
 
@@ -69,7 +67,7 @@ g = 0x5958c9d3898b224b12672c0b98e06c60df923cb8bc999d119458fef538b8fa4046c8db5303
 
 def generate_DSA_keys():
     private = random.SystemRandom().randint(1, q - 1)
-    return private, pow(g, ephemeral, p)
+    return private, pow(g, private, p)
 
 # below, we pass in the message hash because for some reason I wasn't getting the sha1 for the
 # message given in the challenge
@@ -186,7 +184,7 @@ def RSA_parity(message):
     return (RSA_decrypt(message, d46, p46, q46) % 2) == 0
 
 def parity_decrypt():
-    k = 1024 # more generally, bit length of the RSA modulus
+    k = 1024 # bit length of the RSA modulus
     getcontext().prec = k # set precision of decimals
     ctext = make_ctext()
     two = RSA_encrypt(2, e46, N46)
@@ -205,7 +203,96 @@ def parity_decrypt():
 
 
 # for challnge 47: Simple Bleichenbacher PKCS1.5 padding oracle
+from Crypto.Cipher import RSA
+keys = RSA.generate(256)
+from set5 import ext_gcd, modinv, RSA_encrypt, RSA_decrypt
+from math import ceil, floor
 
+message47 = 'Kick it, CC' # 11 bytes
+padded_message = '\x00\x02XXXgarbaggioXX\x00' + message47 # 32 bytes
+ctext = RSA_encrypt(padded_message, keys.e, keys.n)
+
+def padding_oracle(ctext):
+    ptext = num_convert(RSA_decrypt(ctext, keys.d, keys.p, keys.q))
+    front = len(bin(keys.n) - 2) - len(ptext)
+    ptext = ('\x00'*front) + ptext
+    if ptext[:1] == '\x00\x02':
+        return True
+    else:
+        return False
+
+def simple_bliech():
+    n = keys.n
+    c = ctext
+    B = 2**(240)
+    lower_bound = 2*B
+    upper_bound = 3*B - 1
+    intervals = [[lower_bound, upper_bound]]
+    new_intervals = []
+    s = n / (3*B)
+    r = 0
+    iters = 0
+    while True:
+        if iters != 0 and len(intervals) == 1:
+            r = 2*ceil(float(intervals[0][1]*s - 2*B) / n)
+            s = ceil(float(2*B + r*n) / intervals[0][1])
+        else:
+            s += 1
+        trial = (c*RSA_encrypt(s, keys.e, keys.n)) % n
+        if padding_oracle(trial):
+            # could make this bit a function
+            for i, interval in enumerate(intervals):
+                r_l = ceil(float(interval[0]*s - 3*B + 1) / n)
+                r_u = floor(float(interval[1]*s - 2*B) / n)
+                for rho in xrange(r_l, r_u + 1):
+                    new_low = ceil(float(2*B + r*n) / s)
+                    new_high = floor(float(3*B - 1 + r*n) / n)
+                    new_intervals.append([max(interval[0], new_low), min(interval[1], new_high)])
+            intervals = new_intervals
+            new_intervals.clear()
+            if len(intervals) == 1 and intervals[0][0] == intervals[0][1]:
+                print 'Found something: ' + num_convert(intervals[0][0])
+                return
+            else:
+                iters += 1
 
 
 # for challenge 48: Complete Bleichenbacher PKCS1.5 padding oracle
+keys48 = RSA.generate(768)
+
+message48 = 'Ice cold bxxxxxs melt down when in my clutch\nAnd want their txxxxxs sucked, ice cream'
+padded_message48 = '\x00\x02XXXXXXXX\x00' + message48 # 96 bytes
+
+def complete_bliech():
+    n = keys48.n
+    c = ctext
+    B = 2**(752)
+    lower_bound = 2*B
+    upper_bound = 3*B - 1
+    intervals = [[lower_bound, upper_bound]]
+    new_intervals = []
+    s = n / (3*B)
+    r = 0
+    iters = 0
+    while True:
+        if iters != 0 and len(intervals) == 1:
+            r = 2*ceil(float(intervals[0][1]*s - 2*B) / n)
+            s = ceil(float(2*B + r*n) / intervals[0][1])
+        else:
+            s += 1
+        trial = (c*RSA_encrypt(s, keys.e, keys.n)) % n
+        if padding_oracle(trial):
+            for i, interval in enumerate(intervals):
+                r_l = ceil(float(interval[0]*s - 3*B + 1) / n)
+                r_u = floor(float(interval[1]*s - 2*B) / n)
+                for rho in xrange(r_l, r_u + 1):
+                    new_low = ceil(float(2*B + r*n) / s)
+                    new_high = floor(float(3*B - 1 + r*n) / n)
+                    new_intervals.append([max(interval[0], new_low), min(interval[1], new_high)])
+            intervals = new_intervals
+            new_intervals.clear()
+            if len(intervals) == 1 and intervals[0][0] == intervals[0][1]:
+                print 'Found something: ' + num_convert(intervals[0][0])
+                return
+            else:
+                iters += 1

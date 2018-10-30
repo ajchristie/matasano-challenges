@@ -79,8 +79,7 @@ def DH_handshake():
 
 # for challenge 34: Implement MITM key fixing
 # this is really almost only fun, or enlightening, if you actually do the networking part.
-# Later. Write a function that just performs the protocol steps and prints out the result at each
-# step so you can see it working.
+# Later.
 
 
 # for challange 35: Implement DH group negotiation and break with mailcious 'g'
@@ -88,24 +87,12 @@ def DH_handshake():
 
 
 # for challange 36: Implement Secure Remote Password
-# The following are agreed upon before authentication (in addition to the DH parameters above):
+# The following are agreed upon registration with the server (in addition to the DH parameters
+# above):
 I = 'MrX@gmail.com' # identifier
 # v =  # verifier
 k = 3 # this thing
 s =  random.SystemRandom().randint(1, 65536) # salt
-
-# urls = ('/Steve', 'steve')
-#
-# class steve:
-#     def GET(self):
-#         pass
-#
-# def run_steve():
-#     app = web.application(urls, globals())
-#     app.run()
-#
-# def carol(passwd):
-#     pass
 
 def HMAC(message, key):
     sha = hashlib.sha256()
@@ -212,9 +199,10 @@ def string_convert(string):
     return int(string.encode('hex'), 16)
 
 def num_convert(num):
-    # this is touchy in general; you could wrap this in a try and catch the typeerror if there's
-    # an L appended to hex(num)
-    return hex(num)[2:-1].decode('hex')
+    try:
+        return hex(num)[2:].decode('hex')
+    except TypeError:
+        return hex(num)[2:-1].decode('hex')
 
 def RSA_encrypt(message, key, modulus):
     return mod_exp(message, key, modulus)
