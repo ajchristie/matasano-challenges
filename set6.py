@@ -83,16 +83,6 @@ def sign(mhash, priv_key):
         s = (modinv(ephemeral, q) * (H + (priv_key * r))) % q
     return r, s
 
-def sign_k(mhash, priv_key, k):
-    r = 0
-    s = 0
-    sha = hashlib.sha1()
-    while r == 0 and s == 0:
-        r = pow(g, k, p) % q
-        H = int(mhash, 16)
-        s = (modinv(k, q) * (H + (priv_key * r))) % q
-    return r, s
-
 def verify(mhash, signature, pub_key):
     r, s = signature[0], signature[1]
     if r == 0 or s == 0:
@@ -210,7 +200,7 @@ from math import ceil, floor
 
 message47 = 'Kick it, CC' # 11 bytes
 padded_message = '\x00\x02XXXgarbaggioXX\x00' + message47 # 32 bytes
-ctext = RSA_encrypt(padded_message, keys.e, keys.n)
+ctext47 = RSA_encrypt(int(padded_message.encode('hex'), 16), keys.e, keys.n)
 
 def padding_oracle(ctext):
     ptext = num_convert(RSA_decrypt(ctext, keys.d, keys.p, keys.q))
@@ -223,7 +213,7 @@ def padding_oracle(ctext):
 
 def simple_bliech():
     n = keys.n
-    c = ctext
+    c = ctext47
     B = 2**(240)
     lower_bound = 2*B
     upper_bound = 3*B - 1
@@ -240,7 +230,7 @@ def simple_bliech():
             s += 1
         trial = (c*RSA_encrypt(s, keys.e, keys.n)) % n
         if padding_oracle(trial):
-            # could make this bit a function
+            # could make this bit a function; also, this shouldn't be in this version. Oops.
             for i, interval in enumerate(intervals):
                 r_l = ceil(float(interval[0]*s - 3*B + 1) / n)
                 r_u = floor(float(interval[1]*s - 2*B) / n)
@@ -262,10 +252,11 @@ keys48 = RSA.generate(768)
 
 message48 = 'Ice cold bxxxxxs melt down when in my clutch\nAnd want their txxxxxs sucked, ice cream'
 padded_message48 = '\x00\x02XXXXXXXX\x00' + message48 # 96 bytes
+ctext48 = RSA_encrypt(int(padded_message48.encode('hex'), 16), keys48.e, keys48.n)
 
 def complete_bliech():
     n = keys48.n
-    c = ctext
+    c = ctext48
     B = 2**(752)
     lower_bound = 2*B
     upper_bound = 3*B - 1
@@ -274,6 +265,7 @@ def complete_bliech():
     s = n / (3*B)
     r = 0
     iters = 0
+    # Add a blinding step before you drop in here
     while True:
         if iters != 0 and len(intervals) == 1:
             r = 2*ceil(float(intervals[0][1]*s - 2*B) / n)
