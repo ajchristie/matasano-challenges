@@ -5,6 +5,7 @@ import time
 fixed_oracle_key = os.urandom(16)
 nonce = os.urandom(8)
 from set2 import fixedXOR, make_segments, PKCS, check_and_strip_PKCS
+from set3 import AESCTR
 from Crypto.Cipher import AES
 
 
@@ -94,7 +95,7 @@ def ascii_compliant(text):
 
 def decrypt_and_validate(ctext):
     blocks = make_segments(ctext, 16)
-    IV = key
+    IV = fixed_oracle_key
     cipher = AES.new(fixed_oracle_key, AES.MODE_ECB)
     ptext = ''
     for block in blocks:
@@ -110,12 +111,12 @@ def recover_key():
     try:
         ptext2 = decrypt_and_validate(maul)
     except ValueError as e:
-        ptext = e[30:]
+        ptext = e.message[30:]
     block1 = ptext[:16]
     block3 = ptext[32:]
     key = fixedXOR(block1, block3)
-    print 'Key recovered: ' + key
-    print 'Actual key: ' + fixed_oracle_key
+    print 'Key recovered: ' + repr(key)
+    print 'Actual key: ' + repr(fixed_oracle_key)
 
 
 # for challenge 28: SHA-1 Keyed MAC
@@ -196,11 +197,11 @@ def extend_sha1(digest, newdata, length):
     # attacker has the message. You could also assume the length of the key is known if this is all
     # part of some protocol that specifies the size of the key. If not, you'd just create different
     # extensions using different guesses at the length until one is accepted.
-    h0 = unpack('l', digest[:8])[0]
-    h1 = unpack('l', digest[8:16])[0]
-    h2 = unpack('l', digest[16:24])[0]
-    h3 = unpack('l', digest[24:32])[0]
-    h4 = unpack('l', digest[32:40])[0]
+    h0 = int(digest[:8], 16)
+    h1 = int(digest[8:16], 16)
+    h2 = int(digest[16:24], 16)
+    h3 = int(digest[24:32], 16)
+    h4 = int(digest[32:40], 16)
 
     def rol(n, b):
         return ((n << b) | (n >> (32 - b))) & 0xffffffff
@@ -209,11 +210,13 @@ def extend_sha1(digest, newdata, length):
     # (512 bits).  The last 64 bits must contain the length of the original
     # string in bits, so leave room for that (adding a whole padding block if
     # necessary).
-
-    padding = chr(128) + chr(0) * (55 - length % 64)
-    if len(newdata) % 64 > 55:
-        padding += chr(0) * (64 + 55 - length % 64)
-    padded_data = newdata + padding + pack('>Q', 8 * length)
+    if newdata != '' and length != 0:
+        padding = chr(128) + chr(0) * (55 - length % 64)
+        if length % 64 > 55:
+            padding += chr(0) * (64 + 55 - length % 64)
+        padded_data = newdata + padding + pack('>Q', 8 * length)
+    else:
+        return digest
 
     thunks = [padded_data[i:i+64] for i in range(0, len(padded_data), 64)]
     for thunk in thunks:
@@ -256,7 +259,7 @@ def test_forgery():
     mac = SHAMAC(original, key)
     forgery = extend_sha1(mac, ';admin=true', length)
     target = SHAMAC(original + generate_padding(key+original) + ';admin=true', key)
-    print 'Result: ' + str(valid_MAC(forgery, target, key))
+    print 'Result: ' + str(forgery == target)
     print 'Target: ' + target
     print 'Your forgery: ' + forgery
 
@@ -305,7 +308,7 @@ def run_test():
     app.run()
 
 def break_HMAC(file): # make sure run_test is running
-    url = 'http://localhost:9000/test?file=' + file + '&signature='
+    url = 'http://localhost:8080/test?file=' + file + '&signature='
     status = 500
     hm = ''
     tries = 0
@@ -319,7 +322,7 @@ def break_HMAC(file): # make sure run_test is running
                 send = time.time()
                 r = requests.get(address)
                 receive = time.time()
-                elapsed = recieve - send
+                elapsed = receive - send
                 if elapsed > maxtime:
                     maxtime = elapsed
                     nextchar = chr(j)
