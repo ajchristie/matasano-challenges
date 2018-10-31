@@ -10,14 +10,17 @@ p = 0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B
 g = 2
 
 def mod_exp(base, exp, mod):
-    """ This is equivalent to pow but, in the spirit of the exercise..."""
+    """
+    This is equivalent to pow but, in the spirit of the exercise...
+    Right-to-left binary method.
+    """
     result = 1
     base %= mod
     while exp > 0:
-        if (y & 1) == 1:
+        if (exp % 2) == 1:
             result = (result * base) % mod
-        y /= 2
-        result = (base * base) % mod
+        exp /= 2
+        base = (base * base) % mod
     return result
 
 def generate_keys(base, modulus):
@@ -26,15 +29,15 @@ def generate_keys(base, modulus):
     Keys are returned as integers.
     """
     private = random.SystemRandom().randint(2, p) # this isn't appropriate, maybe, but for now...
-    public = mod_exp(2, private)
+    public = mod_exp(base, private, modulus)
     return public, private
 
-def make_session_key(private, recieved):
+def make_session_key(private, received, modulus):
     """
     Returns Diffie Hellman shared secret given user private key and recieved public key as
     integers.
     """
-    return mod_exp(recieved, private)
+    return mod_exp(received, private, modulus)
 
 def derive_keys(session_key):
     """
@@ -57,21 +60,19 @@ def DH_handshake():
     print 'A and B generate their respective key pairs:'
     Akeys = generate_keys(g, p)
     print 'A generates: {} (public)'.format(Akeys[0])
-    print '{:>13} (private)'.format(Akeys[1])
+    print '             {} (private)'.format(Akeys[1])
     Bkeys = generate_keys(g, p)
-    print 'B generates: {} (public)'.format(Bkeys[0])
-    print '{:>13} (private)'.format(Bkeys[1])
-    print '\n\n'
+    print '\nB generates: {} (public)'.format(Bkeys[0])
+    print '             {} (private)'.format(Bkeys[1])
 
     print 'A and B communicate their public keys to each other and raises to the power of their private keys:'
-    Asecret = make_session_key(Akeys[1], Bkeys[0])
-    Bsecret = make_session_key(Bkeys[1], Akeys[0])
+    Asecret = make_session_key(Akeys[1], Bkeys[0], p)
+    Bsecret = make_session_key(Bkeys[1], Akeys[0], p)
     print "A's secret: {}".format(Asecret)
     print "B's secret: {}".format(Bsecret)
-    print 'Shared?: ' + str(Asecret == Bsecret)
-    print '\n\n'
+    print 'Equal?: ' + str(Asecret == Bsecret)
 
-    print 'A and B derive a session key from this shared secret by hashing:'
+    print 'A and B derive a session key from this shared secret by hashing. For example:'
     if Asecret == Bsecret:
         print 'Session key: {}'.format(derive_key(Asecret))
     else:
@@ -95,14 +96,13 @@ k = 3 # this thing
 s =  random.SystemRandom().randint(1, 65536) # salt
 
 def HMAC(message, key):
-    sha = hashlib.sha256()
     if len(key) > 64:
-        key = sha.update(key).hexdigest()
+        key = hashlib.sha256(key).hexdigest()
     elif len(key) < 64:
         key += '\x00'*(64 - len(key))
     inner_pad = fixedXOR(key, '\x36'*64)
     outer_pad = fixedXOR(key, '\x5C'*64)
-    return sha.update(outerpad + sha.update(inner_pad + message).hexdigest()).hexdigest()
+    return hashlib.sha256(outer_pad + hashlib.sha256(inner_pad + message).hexdigest()).hexdigest()
 
 def generate_random():
     return random.SystemRandom().randint(2, p)
@@ -110,13 +110,13 @@ def generate_random():
 def generate_client_ephemeral(private_exp):
     return mod_exp(g, private_exp, p)
 
-def generate_server_ephemeral(private_exp):
+def generate_server_ephemeral(private_exp, v):
     return (k*v + mod_exp(g, private_exp, p)) % p
 
 def generate_client_prekey(passwd, private_exp, server_eph, scrambler):
     h = hashlib.sha256(str(s) + passwd).hexdigest()
     x = int(h, 16)
-    return mod_exp(server_eph - k*mod_exp(g, x, p), private_exp + mod_exp(scrambler, x, p - 1), p)
+    return mod_exp(server_eph - k*mod_exp(g, x, p), (private_exp + scrambler*x) % (p - 1), p)
 
 def generate_server_prekey(verifier, private_key, client_eph, scrambler):
     return mod_exp(client_eph * mod_exp(verifier, scrambler, p), private_key, p)
@@ -130,31 +130,34 @@ def SRP_authenticate(passwd):
     print '   I={}, A={}'.format(I, Aeph)
 
     print '2. Server -> Client:'
+    xH = hashlib.sha256(str(s) + passwd).hexdigest() # was actually computed at registration and
+    x = int(xH, 16)  # doesn't occur again until step 4. Placed here so that we can access v, which
+    v = mod_exp(g, x, p) # was actually computed at registration and stored on server
     Bprivate = generate_random()
-    Beph = generate_server_ephemeral(Bprivate)
+    Beph = generate_server_ephemeral(Bprivate, v)
     print '   s={}, B={}'.format(s, Beph)
 
     print '3. Server and Client compute scrambling value:'
-    Hscramble = hashlib.sha256(str(A) + str(B)).hexdigest()
+    Hscramble = hashlib.sha256(str(Aeph) + str(Beph)).hexdigest()
     scramble = int(Hscramble, 16)
     print '   uH={}, u={}'.format(Hscramble, scramble)
 
     print '4. Client computes:'
-    xH = hashlib.sha256(str(s) + passwd)
-    x = int(xH, 16)
+    # the computations below actually occur here, rather than above
+    # xH = hashlib.sha256(str(s) + passwd)
+    # x = int(xH, 16)
     client_prekey = generate_client_prekey(passwd, Aprivate, Beph, scramble)
     client_key = hashlib.sha256(str(client_prekey)).hexdigest()
     print '  xH={}, x={}, S={}, K={}'.format(xH, x, client_prekey, client_key)
 
     print '5. Server computes:'
-    v = mod_exp(g, x, p) # this was actually precomputed and stored on server
     server_prekey = generate_server_prekey(v, Bprivate, Aeph, scramble)
     server_key = hashlib.sha256(str(server_prekey)).hexdigest()
     print '   S={}, K={}'.format(server_prekey, server_key)
 
     print '6. Client -> Server:'
     hm = HMAC(str(s), client_key)
-    print '   HMAC-SHA256(K, s)={}'.format(hm)
+    print '   HMAC-SHA256(K, s) = {}'.format(hm)
 
     print '7. Server response:'
     server_hm = HMAC(str(s), server_key)
@@ -175,7 +178,7 @@ def SRP_authenticate(passwd):
 
 
 # for challenge 39: Implement RSA
-import subprocess
+from Crypto.PublicKey import RSA
 
 def ext_gcd(m, n):
     """
@@ -195,50 +198,46 @@ def modinv(x, mod):
     _, inv, _ = ext_gcd(x, mod)
     return inv % mod
 
+def lcm(m, n):
+    return (m * n) / ext_gcd(m, n)[0]
+
 def string_convert(string):
     return int(string.encode('hex'), 16)
 
 def num_convert(num):
-    try:
-        return hex(num)[2:].decode('hex')
-    except TypeError:
-        return hex(num)[2:-1].decode('hex')
+    if isinstance(num, long):
+        s = hex(num)
+        s = '0'*(len(s[2:-1]) % 2) + s[2:-1]
+    else:
+        s = '0'*(len(hex(num)[2:]) % 2) + hex(num)[2:]
+    return s.decode('hex')
 
 def RSA_encrypt(message, key, modulus):
     return mod_exp(message, key, modulus)
 
 def RSA_decrypt(message, key, p, q):
-
-    ## test data
-    #p = 9817
-    #q = 9907
-    #e = 65537
-    #c = 36076319
-    #d = modinv(e, lcm(p - 1, q - 1))
-
-    m1 = mod_exp(message, d % p-1, p)
-    m2 = mod_exp(message, d % q-1, q)
+    m1 = mod_exp(message, key % p-1, p)
+    m2 = mod_exp(message, key % q-1, q)
     qinv = modinv(q, p)
     h = (qinv * (m1 - m2)) % p
-    return m2 + h*q
+    return (m2 + h*q)
 
 def RSA_demo(message): # message should just be a number, and not especially big
-    P = int(subprocess.check_output(["openssl", "prime", "-generate", "-bits", "2048"))
-    Q = int(subprocess.check_output(["openssl", "prime", "-generate", "-bits", "2048"]))
-    N = P * Q
-    print 'Generate parameters: p={}'.format(P)
-    print '                     q={}'.format(Q)
-    print '                     N={}'.format(N)
+    keys = RSA.generate(2048, e=3) # we'll just use the primes and modulus; no cheating
+    print 'Generate parameters: p={}'.format(keys.p)
+    print '                     q={}'.format(keys.q)
+    print '                     N={}'.format(keys.n)
     print '\nPublic key: (e=3, N)'
-    d = modinv(3, N)
+    d = modinv(3, lcm((keys.p) - 1, (keys.q) - 1))
+    print 'LCM: ' + str(lcm((keys.p) - 1, (keys.q) - 1))
     print 'Private key: d={}'.format(d)
-    print '\n'
     print 'Your message: ' + str(message)
-    c = RSA_encrypt(message, d, N)
-    ctext = hex(c)[2:]
-    print 'Encrypted: ' + ctext
-    reconverted = int(ctext, 16)
-    ptext = RSA_decrypt(reconverted, e, P, Q)
+    c = RSA_encrypt(message, 3, keys.n)
+    ctext = num_convert(c)
+    print 'Encrypted: ' + repr(ctext)
+    reconverted = string_convert(ctext)
+    print reconverted
+    ptext = RSA_decrypt(reconverted, d, keys.p, keys.q)
     print 'Decrypted: ' + str(ptext)
 
 # for challenge 40: Implement RSA e=3 broadcast attack
