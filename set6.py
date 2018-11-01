@@ -44,7 +44,7 @@ def forge_signature(message):
     return nth_root(cube, 3) + 1 # since nth_root returns _under_ the true root
 
 def nth_root(x, n): # make sure x != 0
-    """ Returns nearest integer < true nth root of x """
+    """ Returns nearest integer <= true nth root of x """
     root = 1
     while root**n < x:
         root *= 2
@@ -217,34 +217,27 @@ def simple_bliech():
     B = 2**(240)
     lower_bound = 2*B
     upper_bound = 3*B - 1
-    intervals = [[lower_bound, upper_bound]]
-    new_intervals = []
     s = n / (3*B)
     r = 0
     iters = 0
     while True:
-        if iters != 0 and len(intervals) == 1:
+        if iters != 0:
             r = 2*ceil(float(intervals[0][1]*s - 2*B) / n)
             s = ceil(float(2*B + r*n) / intervals[0][1])
         else:
             s += 1
         trial = (c*RSA_encrypt(s, keys.e, keys.n)) % n
         if padding_oracle(trial):
-            # could make this bit a function; also, this shouldn't be in this version. Oops.
-            for i, interval in enumerate(intervals):
-                r_l = ceil(float(interval[0]*s - 3*B + 1) / n)
-                r_u = floor(float(interval[1]*s - 2*B) / n)
-                for rho in xrange(r_l, r_u + 1):
-                    new_low = ceil(float(2*B + r*n) / s)
-                    new_high = floor(float(3*B - 1 + r*n) / n)
-                    new_intervals.append([max(interval[0], new_low), min(interval[1], new_high)])
-            intervals = new_intervals
-            new_intervals.clear()
-            if len(intervals) == 1 and intervals[0][0] == intervals[0][1]:
-                print 'Found something: ' + num_convert(intervals[0][0])
-                return
-            else:
-                iters += 1
+            r_l = ceil(float(interval[0]*s - 3*B + 1) / n)
+            r_u = floor(float(interval[1]*s - 2*B) / n)
+            for r in xrange(r_l, r_u + 1):
+                lower_bound = ceil(float(2*B + r*n) / s)
+                upper_bound = floor(float(3*B - 1 + r*n) / n)
+        if lower_bound == upper_bound:
+            print 'Found something: ' + num_convert(lower_bound)
+            return
+        else:
+            iters += 1
 
 
 # for challenge 48: Complete Bleichenbacher PKCS1.5 padding oracle
@@ -253,6 +246,19 @@ keys48 = RSA.generate(768)
 message48 = 'Ice cold bxxxxxs melt down when in my clutch\nAnd want their txxxxxs sucked, ice cream'
 padded_message48 = '\x00\x02XXXXXXXX\x00' + message48 # 96 bytes
 ctext48 = RSA_encrypt(int(padded_message48.encode('hex'), 16), keys48.e, keys48.n)
+
+def update_intervals(intervals, s, B, n):
+    fresh = []
+    for i, interval in enumerate(intervals):
+        r_l = ceil(float(interval[0]*s - 3*B + 1) / n)
+        r_u = floor(float(interval[1]*s - 2*B) / n)
+        for r in xrange(r_l, r_u + 1):
+            new_low = ceil(float(2*B + r*n) / s)
+            new_high = floor(float(3*B - 1 + r*n) / n)
+            band = [max(interval[0], new_low), min(interval[1], new_high)]
+            if band[0] <= band[1]:
+                fresh.append(band)
+    return fresh
 
 def complete_bliech():
     n = keys48.n
@@ -263,26 +269,18 @@ def complete_bliech():
     intervals = [[lower_bound, upper_bound]]
     new_intervals = []
     s = n / (3*B)
+    # there should be a blinding step in here, but since that isn't necessary in this case...
     r = 0
     iters = 0
-    # Add a blinding step before you drop in here
     while True:
         if iters != 0 and len(intervals) == 1:
             r = 2*ceil(float(intervals[0][1]*s - 2*B) / n)
             s = ceil(float(2*B + r*n) / intervals[0][1])
         else:
             s += 1
-        trial = (c*RSA_encrypt(s, keys.e, keys.n)) % n
+        trial = (c*RSA_encrypt(s, keys48.e, keys48.n)) % n
         if padding_oracle(trial):
-            for i, interval in enumerate(intervals):
-                r_l = ceil(float(interval[0]*s - 3*B + 1) / n)
-                r_u = floor(float(interval[1]*s - 2*B) / n)
-                for rho in xrange(r_l, r_u + 1):
-                    new_low = ceil(float(2*B + r*n) / s)
-                    new_high = floor(float(3*B - 1 + r*n) / n)
-                    new_intervals.append([max(interval[0], new_low), min(interval[1], new_high)])
-            intervals = new_intervals
-            new_intervals.clear()
+            intervals = update_intervals(intervals, s, B, n)
             if len(intervals) == 1 and intervals[0][0] == intervals[0][1]:
                 print 'Found something: ' + num_convert(intervals[0][0])
                 return
