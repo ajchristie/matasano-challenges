@@ -173,8 +173,8 @@ def SRP_authenticate(passwd):
 # s is passed back by the server in step 2 of the protocol w/o requiring any authentication. Easy.
 
 
-# for challenge 38: Offline dictionary attack on SRP
-
+# for challenge 38: Offline dictionary attack on simplified SRP
+# Simplified? Pfft.
 
 
 # for challenge 39: Implement RSA
@@ -216,8 +216,8 @@ def RSA_encrypt(message, key, modulus):
     return mod_exp(message, key, modulus)
 
 def RSA_decrypt(message, key, p, q):
-    m1 = mod_exp(message, key % p-1, p)
-    m2 = mod_exp(message, key % q-1, q)
+    m1 = mod_exp(message, key % (p-1), p)
+    m2 = mod_exp(message, key % (q-1), q)
     qinv = modinv(q, p)
     h = (qinv * (m1 - m2)) % p
     return (m2 + h*q)
@@ -229,14 +229,12 @@ def RSA_demo(message): # message should just be a number, and not especially big
     print '                     N={}'.format(keys.n)
     print '\nPublic key: (e=3, N)'
     d = modinv(3, lcm((keys.p) - 1, (keys.q) - 1))
-    print 'LCM: ' + str(lcm((keys.p) - 1, (keys.q) - 1))
     print 'Private key: d={}'.format(d)
     print 'Your message: ' + str(message)
     c = RSA_encrypt(message, 3, keys.n)
     ctext = num_convert(c)
     print 'Encrypted: ' + repr(ctext)
     reconverted = string_convert(ctext)
-    print reconverted
     ptext = RSA_decrypt(reconverted, d, keys.p, keys.q)
     print 'Decrypted: ' + str(ptext)
 
