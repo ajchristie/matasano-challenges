@@ -132,7 +132,7 @@ def find_sizes(cipher):
     """
     In the situation here, it's possible to capture both the size of the plaintext and the block size of the cipher in one go, so we may as well. As the description says, we know this already, but do it anyway.
     """
-    start_length = len(cipher('', key))
+    start_length = len(cipher('', fixed_oracle_key))
     ptext = ''
     while True:
         ptext += 'A'
